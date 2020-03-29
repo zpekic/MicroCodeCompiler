@@ -1,0 +1,480 @@
+//-----------------------------------------------------
+// TMS 9900 code microcode. (c) zpekic@hotmail.com 2018
+//-----------------------------------------------------
+	.mapper 9 256
+	.microcode 66 512
+
+//-----------------------------------------------------
+// input field must appear on right side, only width is checked
+//-----------------------------------------------------
+DIN	.inpfield 16
+nLOAD	.inpfield 1
+READY	.inpfield 1
+CRUIN	.inpfield 1
+BYTEMODE .inpfield 1 // if high, core will read/write byte by byte using data bus LSByte
+
+
+// ------------------------------------------------------
+// Microinstruction word - definition start
+// ------------------------------------------------------
+HOLDA		.valfield 1 range 0 .. 1 default 0
+IAQ		.valfield 1 range 0 .. 1 default 0
+CRUOUT		.valfield 1 range 0 .. 1 default 0
+CRUCLK		.valfield 1 range 0 .. 1 default 0
+
+nMEMEN		.valfield 1 range 0 .. 1 default 1
+nWE		.valfield 1 range 0 .. 1 default 1
+DBIN		.valfield 1 range 0 .. 1 default 0
+WAIT		.valfield 1 range 0 .. 1 default 0
+
+A		.muxfield 1 values da, sa default sa  
+
+A_and_mask	.valfield 4 range %0000 .. %1111 default %1111 // used to modify address bus output
+A_ior_mask	.valfield 4 range %0000 .. %1111 default %0000 // used to modify address bus output
+
+const		.valfield 8 range 0 .. $FF default 0
+
+temp0		.muxfield 1 registered values temp0, dpu_y default temp0 
+temp1		.muxfield 1 registered values temp1, dpu_y default temp1
+
+ir		.muxfield 1 registered values ir, dpu_y default ir
+pc		.muxfield 2 registered values pc, dpu_y, pc_plus_2, pc_plus_1 default pc
+wp		.muxfield 1 registered values wp, dpu_y default wp
+
+sa		.muxfield 2 registered values sa, dpu_y, sa_plus_2, da_plus_1 default sa
+sd		.muxfield 2 registered values sd, dpu_y, alu_y, nop default sd
+
+da		.muxfield 2 registered values da, dpu_y, da_plus_2, da_plus_1 default da
+dd		.muxfield 2 registered values dd, dpu_y, alu_y, nop default dd
+
+		// internal data path ALU
+dpu_l		.muxfield 3 values zero,  sd, wp, temp0, dd,,,  default zero	
+dpu_r		.muxfield 3 values const, wp, st, temp1, DIN, pc,, default const	
+dpu_f		.muxfield 3 values add, d0s0, s1d0,,,,,  default add		
+
+		// Sequencer control
+instruction	.seqinstr 4 values next/next, next/goto, gosub/next, return/repeat, fork/gosub,,,,,,,,,, default next
+condition	.seqcond  4 values TRUE, READY, nLOAD, nHOLD default TRUE
+polarity	.seqinvert 1 values !!, ! default !! // 
+direct		.seqdirect 9 range 0 .. $1FF default $0
+// ------------------------------------------------------
+// Microinstruction word - definition end
+// ------------------------------------------------------
+
+y_is_FFFC	.alias dpu_l = zero, dpu_r = const, const = $FC
+y_is_0000	.alias dpu_l = zero, dpu_r = const, const = 0
+y_is_wp		.alias dpu_l = zero, dpu_r = wp
+y_is_st		.alias dpu_l = zero, dpu_r = st
+y_is_sd		.alias dpu_l = sd, dpu_r = const, const = 0
+y_is_r0		.alias dpu_l = wp, dpu_r = const, const = 0
+y_is_r12	.alias dpu_l = wp, dpu_r = const, const = 24
+y_is_r13	.alias dpu_l = wp, dpu_r = const, const = 26
+y_is_r14	.alias dpu_l = wp, dpu_r = const, const = 28
+y_is_r15	.alias dpu_l = wp, dpu_r = const, const = 30
+y_is_temp0	.alias dpu_l = temp0, dpu_r = const, const = 0
+y_is_temp1	.alias dpu_l = zero, dpu_r = temp1, const = 0
+y_is_pc		.alias dpu_l = zero, dpu_r = pc
+y_is_DIN	.alias dpu_l = zero, dpu_r = DIN
+y_is_ir_DIN_Hi	.alias dpu_l = DIN, dpu_r = ir, dpu_f = s0d0;  // s << 8 | (d & $00FF)
+y_is_ir_DIN_Lo	.alias dpu_l = DIN, dpu_r = ir, dpu_f = d1s0;  // (d & $FF00) | (s & $00FF)
+y_is_wp_plus_2S .alias dpu_l = wp, dpu_r = ir, dpu_f = RSAddr; // s + (d & 0000000000001111) << 1
+y_is_wp_plus_2D .alias dpu_l = wp, dpu_r = ir, dpu_f = RDAddr; // s + (d & 0000001111000000) >> 5
+y_is_4newintlvl .alias dpu_l = zero, dpu_d = newintlevel, dpu_f = s_plus_4d
+
+clear_st	.alias st_lg <= zero, st_ag <= zero, st_eq <= zero, st_carry <= zero, st_overflow <= zero, st_parity <= zero, st_xop <= zero, st_imask <= zero
+ReadInstruction .alias nMEMEN = 0, DBIN = 1, IAQ = 1
+ReadData 	.alias nMEMEN = 0, DBIN = 1
+WriteData 	.alias nMEMEN = 0, nWE = 0
+
+
+		.org 0;								// reset signal will set uPC <= 0
+Restart:	da <= dpu_y, sa <= dpu_y, y_is_FFFC, if !nLoad goto SaveStAndWp;// sa = da = >FFFC (Load vector)
+Reset:		temp0 <= dpu_y, y_is_st;					// temp0 <= st
+		temp1 <= dpu_y, y_is_wp;					// temp1 <= wp
+		da <= dpu_y, sa <= dpu_y, y_is_0000, clear_st; 			// sa = da = >0000 (Reset vector)
+LoadVector:	gosub ReadDdWord; 					 		// dd <= M[da]
+		wp <= dpu_y, y_is_dd;			 			 	 // WP <= M[vector]
+		da <= dpu_y, y_is_r15;
+		dd <= dpu_y, y_is_temp0, gosub WriteDdWord;	 			 // M[R15] <= old ST
+		da <= dpu_y, y_is_r14;
+		dd <= dpu_y, y_is_pc, gosub WriteDdWord;				 // M[R14] <= old PC
+		da <= dpu_y, y_is_r13;
+		dd <= dpu_y, y_is_temp1, gosub WriteDdWord;	 			 // M[R13] <= old WP
+		sa <= sa_plus_2; gosub ReadSdWord;			
+		pc <= dpu_y, y_is_sd; 	 					 	 // PC <= M[vector + 2]
+Fetch:		ReadInstruction, sa <= dpu_y, y_is_pc, if !BYTEMODE then goto Fetch16; 	 // Early appearance of address allows dynamic generation of BYTEMODE
+FetchEvenByte:	ReadInstruction, A = sa, A_and_mask = %1110, ir <= dpu_y, y_is_ir_DIN_Hi; if READY then goto FetchOddByte;
+		ReadInstruction, A = sa, A_and_mask = %1110, ir <= dpu_y, y_is_ir_DIN_Hi; WAIT = 1; if !READY then repeat;
+FetchOddByte:	ReadInstruction, A = sa, A_ior_mask = %0001, ir <= dpu_y, y_is_ir_DIN_Lo; if READY then goto Execute;
+		ReadInstruction, A = sa, A_ior_mask = %0001, ir <= dpu_y, y_is_ir_DIN_Lo, WAIT = 1, if READY then goto Execute else repeat;
+Fetch16:	ReadInstruction, ir <= dpu_y, y_is_DIN; if READY then goto Execute;
+		ReadInstruction, ir <= dpu_y, y_is_DIN; WAIT = 1; if !READY then repeat;
+Execute:	da <= dpu_y, sa <= dpu_y, y_is_wp_plus_2S, if !nHOLD gosub HoldAck;	  // at least 1 clock cycle for the instruction mapping rom propagation
+		pc <= pc_plus_2, if !nHOLD gosub HoldAck else fork;
+
+		
+		// -------------------------------------------------------------
+		// All instructions return (except XOP and BLWP)
+		// -------------------------------------------------------------
+ExecuteNext:	da <= dpu_y, sa <= dpu_y, y_is_FFFC, if nLOAD goto CheckForInt;
+SaveStAndWp:	temp0 <= dpu_y, y_is_st;			// temp0 <= st
+		temp1 <= dpu_y, y_is_wp, goto LoadVector;	// temp1 <= wp, continue with vectoring routine
+CheckForInt:	sampleint = 1, if !interrupt goto Fetch;	// interrupt <= !nINTREQ & sampleint & (ic > st_imask)
+		sa <= dpu_y, da <= dpu_y, y_is_4ICLevel, st_imask <= ICLevelInc, goto SaveAndVector;
+		
+
+		// -------------------------------------------------------------
+		// XOP and BLWP return here
+		// -------------------------------------------------------------
+ExecuteNext1:	da <= dpu_y, sa <= dpu_y, y_is_FFFC, if nLOAD goto Fetch;
+		goto SaveStAndWp;
+
+
+		.map %0000000X		// ILLEGAL OPCODES
+		goto Idle;
+
+		.map %00000010	
+		if nHOLD gosub HoldAck else switch8;
+
+		// -------------------------------------------------------------
+		// 0200 LI - Load register immediate R[S] = M[PC++] (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord;	// sd = M[PC]
+		pc <= pc_plus_2, dd <= dpu_y, y_is_0000; 
+		dd <= alu_y, alu_f = adc, alu_cin = zero, st_agt <= alu_agt, st_lgt <= alu_lgt, st_equal <= alu_zero, goto StoreReg; 
+		.skip 2
+		
+		// -------------------------------------------------------------
+		// 0220 AI - Add immediate R[S] = R[S] + M[PC++] (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord; 	// sd = M[PC]
+		pc <= pc_plus_2, gosub ReadDdWord;		// dd = RS
+		dd <= alu_y, alu_f = adc, alu_cin = zero, st_agt <= alu_agt, st_lgt <= alu_lgt, st_equal <= alu_zero, st_carry = alu_cout, st_ovr = alu_ovr, goto StoreReg; 
+		.skip 1
+		
+		// -------------------------------------------------------------
+		// 0240 ANDI - And immediate R[S] = R[S] & M[PC++] (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord; 
+		pc <= pc_plus_2, gosub ReadDdWord;
+		dd <= alu_y, alu_f = and, st_agt <= alu_agt, st_lgt <= alu_lgt, st_equal <= alu_zero, goto StoreReg;					
+		.skip 1
+		
+		// -------------------------------------------------------------
+		// 0260 ORI - Or immediate R[S] = R[S] | M[PC++] (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord; 
+		pc <= pc_plus_2, gosub ReadDdWord;
+		dd <= alu_y, alu_f = ior, st_agt <= alu_agt, st_lgt <= alu_lgt, st_equal <= alu_zero, goto StoreReg;					
+		.skip 1
+		
+		// -------------------------------------------------------------
+		// 0280 CI - Compare immediate = R[S] - M[PC++] (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord; 
+		pc <= pc_plus_2, gosub ReadDdWord;
+		dd <= alu_y, alu_f = sub, alu_cin = one, st_agt <= alu_agt, st_lgt <= alu_lgt, st_equal <= alu_zero, goto ExecuteNext; 
+		.skip 1
+		
+		// -------------------------------------------------------------
+		// 02A0 STWP - Store workspace register (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		dd <= dpu_y, y_is_wp, if !nHOLD then gosub HoldAck;
+StoreReg:	gosub WriteDdWord;
+		goto ExecuteNext;
+		.skip 1
+		
+		// -------------------------------------------------------------
+		// 02C0 STST - Store status register (da already contains wp + 2S)
+		// -------------------------------------------------------------
+		dd <= dpu_y, y_is_st, if !nHOLD then gosub HoldAck;
+		goto StoreReg;
+		.skip 2
+		
+		// -------------------------------------------------------------
+		// 02E0 LWPI - Load workspace pointer immediate WP = M[PC++]
+		// -------------------------------------------------------------
+		sa <= dpu_y, y_is_pc, gosub ReadSdWord; 
+		wp <= dpu_y, y_is_sd, pc <= pc_plus_2, goto ExecuteNext;
+
+		.map %00000011
+		if nHOLD gosub HoldAck else switch8;
+
+		// -------------------------------------------------------------
+		// 0300 LIMI - Load interrupt mask immediate
+		// -------------------------------------------------------------
+		.skip 4
+
+		// -------------------------------------------------------------
+		// 0320 ILLEGAL
+		// -------------------------------------------------------------
+		goto Idle;
+		.skip 3
+
+		// -------------------------------------------------------------
+		// 0340 IDLE 
+		// -------------------------------------------------------------
+		goto Idle;
+		.skip 3
+
+		// -------------------------------------------------------------
+		// 0360 RSET
+		// -------------------------------------------------------------
+		A = pc, A_and_mask = %0111, A_ior_mask = %1110, clear_st;
+		A = pc, A_and_mask = %0111, A_ior_mask = %1110; CRUCLK = 1;
+		A = pc, A_and_mask = %0111, A_ior_mask = %1110; goto ExecuteNext; // TODO - or should we go to Reset?
+		.skip 1
+
+		// -------------------------------------------------------------
+		// 0380 RTWP - Return with workspace pointer
+		// -------------------------------------------------------------
+		goto Rtwp;
+		.skip 3
+
+		// -------------------------------------------------------------
+		// 03A0 CKON
+		// -------------------------------------------------------------
+		A = pc, A_and_mask = %1011, A_ior_mask = %1110;
+		A = pc, A_and_mask = %1011, A_ior_mask = %1110; CRUCLK = 1;
+		A = pc, A_and_mask = %1011, A_ior_mask = %1110; goto ExecuteNext;
+		.skip 1
+
+		// -------------------------------------------------------------
+		// 03C0 CKOF
+		// -------------------------------------------------------------
+		A = pc, A_and_mask = %1101, A_ior_mask = %1110;
+		A = pc, A_and_mask = %1101, A_ior_mask = %1110; CRUCLK = 1;
+		A = pc, A_and_mask = %1101, A_ior_mask = %1110; goto ExecuteNext;
+		.skip 1
+
+		// -------------------------------------------------------------
+		// 03E0 LREX		
+		// -------------------------------------------------------------
+		A = pc, A_and_mask = %1111, A_ior_mask = %1110;
+		A = pc, A_and_mask = %1111, A_ior_mask = %1110; CRUCLK = 1;
+		A = pc, A_and_mask = %1111, A_ior_mask = %1110; goto ExecuteNext;
+		.skip 1
+	
+		.map %00000100
+		if nHOLD gosub HoldAck else switch16;
+
+		// -------------------------------------------------------------
+		// 0400 BLWP		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 0440 B		
+		// -------------------------------------------------------------
+Branch:		gosub ReadDdWord;				// B Rs
+		pc <= dpu_y, y_is_dd, goto ExecuteNext;
+		gosub Ts01ToDa;					// B *Rs
+		goto Branch;
+		gosub Ts10ToDa;					// B addr or CLR index(Rs)
+		goto Branch;
+		gosub Ts11ToDa;					// B *Rs+
+		goto Branch;
+
+		// -------------------------------------------------------------
+		// 0480 X		
+		// -------------------------------------------------------------
+
+		// -------------------------------------------------------------
+		// 04C0 CLR		
+		// -------------------------------------------------------------
+WriteZero:	dd <= dpu_y, y_is_0000, gosub WriteDdWord;	// CLR Rs
+		goto ExecuteNext;
+		gosub Ts01ToDa;					// CLR *Rs
+		goto WriteZero;
+		gosub Ts10ToDa;					// CLR addr or CLR index(Rs)
+		goto WriteZero;
+		gosub Ts11ToDa;					// CLR *Rs+
+		goto WriteZero;
+
+		.map %00000101
+		if nHOLD gosub HoldAck else switch4;
+
+		// -------------------------------------------------------------
+		// 0500 NEG		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 0540 INV		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 0580 INC		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 05C0 INCT		
+		// -------------------------------------------------------------
+
+		.map %00000110
+		if nHOLD gosub HoldAck else switch4;
+
+		// -------------------------------------------------------------
+		// 0600 DEC		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 0640 DECT		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 0680 BL		
+		// -------------------------------------------------------------
+		// -------------------------------------------------------------
+		// 06C0 SWPB		
+		// -------------------------------------------------------------
+
+		.map %00000111
+		if nHOLD gosub HoldAck else switch4;
+
+		// -------------------------------------------------------------
+		// 0700 SETO		
+		// -------------------------------------------------------------
+
+		// -------------------------------------------------------------
+		// 0740 ABS		
+		// -------------------------------------------------------------
+
+		// -------------------------------------------------------------
+		// 0780 ILLEGAL		
+		// -------------------------------------------------------------
+		goto Idle;
+		.skip 7
+
+		// -------------------------------------------------------------
+		// 07C0 ILLEGAL		
+		// -------------------------------------------------------------
+		goto Idle;
+		.skip 7
+		
+
+		.map %00010XXX		
+		// -------------------------------------------------------------
+		// 1000 - 1700 JMP, JLT, JLE, JEQ, JHE, JGT, JNE, JNC (note that condition for JMP (0000) must we wired to "true")
+		// -------------------------------------------------------------
+		if !condition then goto ExecuteNext;
+		pc <= dpu_y, y_is_pc_plus_2ir, goto ExecuteNext;
+
+		.map %00011000		
+		// -------------------------------------------------------------
+		// 1800 JOC
+		// -------------------------------------------------------------
+		if !condition then goto ExecuteNext;
+		pc <= pc_plus_2dispext, goto ExecuteNext;
+
+		.map %00011001		
+		// -------------------------------------------------------------
+		// 1900 JNO
+		// -------------------------------------------------------------
+		if !condition then goto ExecuteNext;
+		pc <= dpu_y, y_is_pc_plus_2ir, goto ExecuteNext;
+
+		.map %00011010
+		// -------------------------------------------------------------	
+		// 1A00 JL
+		// -------------------------------------------------------------
+		if !condition then goto ExecuteNext;
+		pc <= dpu_y, y_is_pc_plus_2ir, goto ExecuteNext;
+
+		.map %00011011		
+		// -------------------------------------------------------------	
+		// 1B00 JH
+		// -------------------------------------------------------------	
+		if !condition then goto ExecuteNext;
+		pc <= dpu_y, y_is_pc_plus_2ir, goto ExecuteNext;
+
+		.map %00011100		
+		// -------------------------------------------------------------	
+		// 1C00 JOP
+		// -------------------------------------------------------------	
+		if !condition then goto ExecuteNext;
+		pc <= dpu_y, y_is_pc_plus_2ir, goto ExecuteNext;
+	
+		.map %00011101		
+		// -------------------------------------------------------------	
+		// 1D00 SBO - set bit one (CRU operation!)
+		// -------------------------------------------------------------	
+		gosub GetCRUBitAddr;
+		a = sa_cru, A_and_mask = %0001, CRUOUT = 1
+		a = sa_cru. A_and_mask = %0001, CRUOUT = 1, CRUCLK = 1;
+		a = sa_cru, A_and_mask = %0001, CRUOUT = 1, goto ExecuteNext;
+
+		.map %00011110		
+		// -------------------------------------------------------------	
+		// 1E00 SBZ - set bit zero (CRU operation!)
+		// -------------------------------------------------------------	
+		gosub GetCRUBitAddr;
+		a = sa_cru, A_and_mask = %0001, CRUOUT = 0
+		a = sa_cru. A_and_mask = %0001, CRUOUT = 0, CRUCLK = 1;
+		a = sa_cru, A_and_mask = %0001, CRUOUT = 0, goto ExecuteNext;
+
+		.map %00011111		
+		// -------------------------------------------------------------	
+		// 1F00 TB - test bit one (CRU operation!)
+		// -------------------------------------------------------------	
+		gosub GetCRUBitAddr;
+		a = sa_cru, A_and_mask = %0001;
+		a = sa_cru. A_and_mask = %0001, CRUCLK = 1, st_eq <= CRUIN;
+		a = sa_cru, A_and_mask = %0001, goto ExecuteNext;
+		
+		//-------------------------------- 
+		// Some complex instructions
+		//--------------------------------
+Rtwp:		sa <= dpu_y, y_is_r13, goto ReadSdWord; // dd <= R13
+		wp <= dpu_y, y_is_dd;
+		sa <= dpu_y, y_is_r14, goto ReadSdWord; // dd <= R14
+		pc <= dpu_y, y_is_dd;
+		sa <= dpu_y, y_is_r15, goto ReadSdWord; // dd <= R15
+		st <= dpu_y, y_is_dd, goto ExecuteNext; // TODO - fix st loading!
+
+		//-------------------------------- 
+		// Bus Driving subroutines
+		//--------------------------------
+LoadImmediate:	sa <= dpu_y, y_is_pc, pc <= pc_plus_2, goto ReadSdWord;	// call with "gosub" so it will return...
+		
+		// Stay in Idle until either /LOAD and /INTREQ is accepted, there will be 1 CRUCLK every 6 clocks)
+Idle:		A = pc, A_and_mask = %0101, A_ior_mask = %1110;
+		A = pc, A_and_mask = %0101, A_ior_mask = %1110;
+		A = pc, A_and_mask = %0101, A_ior_mask = %1110;
+		A = pc, A_and_mask = %0101, A_ior_mask = %1110, CRUCLK = 1;
+		A = pc, A_and_mask = %0101, A_ior_mask = %1110, da <= dpu_y, sa <= dpu_y, y_is_FFFC, if !nLoad goto SaveAndVector; // Bail out for /LOAD
+		A = pc, A_and_mask = %0101, A_ior_mask = %1110, sampleint = 1, if !interrupt goto Idle;	
+		sa <= dpu_y, da <= dpu_y, y_is_4ICLevel, st_imask <= ICLevelInc, goto SaveAndVector;
+
+HoldAck:	HOLDA = 1; if nHOLD then return else repeat;
+
+GetCRUBitAddr:	sa <= dpu_y, y_is_r12, gosub ReadSdWord;	// sd = R12
+		sa <= dpu_y, y_is_sd, if nHOLD then next else gosub HoldAck;
+		sa <= dpu_y, y_is_sa_cruoff, return;		// magic to add IR CRU offset to R12 base address
+
+//
+//	sd <= M[sa]
+//
+ReadSdWord:	A = sa, ReadData, if !BYTEMODE then goto ReadSd16; 
+ReadSdEvenByte:	A = sa, ReadData, A_and_mask = %1110, sd <= dpu_y, y_is_DIN_Hi, if READY then ReadSdOddByte;
+		A = sa, ReadData, A_and_mask = %1110, sd <= dpu_y, y_is_DIN_Hi, WAIT = 1, if !READY then repeat;
+ReadSdOddByte:	A = sa, ReadData, A_ior_mask = %0001, sd <= dpu_y, y_is_DIN_Lo, if READY return;
+		A = sa, ReadData, A_ior_mask = %0001, sd <= dpu_y, y_is_DIN_Lo, WAIT = 1, if READY then return else repeat;
+ReadSd16:	A = sa, ReadData, sd <= dpu_y, y_is_DIN; if READY then return;
+		A = sa, ReadData, sd <= dpu_y, y_is_DIN; WAIT = 1, if READY then return else repeat;
+
+//
+//	dd <= M[da]
+//
+ReadDdWord:	A = da, ReadData, if !BYTEMODE then goto ReadDd16;
+ReadDdEvenByte:	A = da, ReadData, A_and_mask = %1110, dd <= dpu_y, y_is_DIN_Hi, if READY then ReadDdOddByte;
+		A = da, ReadData, A_and_mask = %1110, dd <= dpu_y, y_is_DIN_Hi, WAIT = 1, if !READY then repeat;
+ReadDdOddByte:	A = da, ReadData, A_ior_mask = %0001, dd <= dpu_y, y_is_DIN_Lo, if READY return;
+		A = da, ReadData, A_ior_mask = %0001, dd <= dpu_y, y_is_DIN_Lo, WAIT = 1, if READY then return;
+ReadDd16:	A = da, ReadData; dd <= dpu_y, y_is_DIN, if READY then return;
+		A = da, ReadData, dd <= dpu_y, y_is_DIN, WAIT = 1, if READY then return else repeat;
+
+//
+//	M[da] <= dd
+//
+WriteDdWord:	A = da, nMEMEN = 0, if !BYTEMODE then goto WriteSd16;
+WriteDdEvenByte:A = da, WriteData, A_and_mask = %1110, DOUT_is_dd_Hi, if READY then WriteSdOddByte;
+		A = da, WriteData, A_and_mask = %1110, DOUT_is_dd_Hi, WAIT = 1, if !READY then repeat;
+WriteDdOddByte:	A = da, WriteData, A_ior_mask = %0001, DOUT_is_dd_Lo, if READY return;
+		A = da, WriteData, A_ior_mask = %0001, DOUT_is_dd_Lo, WAIT = 1, if READY then return else repeat;
+WriteDd16:	A = da, WriteData, DOUT_is_dd, if READY then return;
+		A = da, WriteData, DOUT_is_dd, WAIT = 1, if READY then return else repeat;
+
+		  
