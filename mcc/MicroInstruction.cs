@@ -15,7 +15,7 @@ namespace mcc
         private string value_then = string.Empty;
         private string value_else = string.Empty;
 
-        public MicroInstruction(int lineNumber, int orgValue, string label, string content, List<ParsedLine> parsedLines) : base(lineNumber, orgValue, label, content)
+        public MicroInstruction(int lineNumber, int orgValue, string label, string content, List<ParsedLine> parsedLines, Logger logger) : base(lineNumber, orgValue, label, content, logger)
         {
             this.ParsedLines = parsedLines;
         }
@@ -27,8 +27,8 @@ namespace mcc
             if (resolved.Count > 0)
             {
                 TraceListValues(resolved, string.Format("Line {0}: resolved aliases: ", LineNumber.ToString()));
-                System.Console.WriteLine(GetParsedLineString());
-                System.Console.WriteLine();
+                logger.WriteLine(GetParsedLineString());
+                logger.WriteLine(string.Empty);
             }
 
             // sanitize microinstruction statements and extract if-then-else and register ( name <= value ) and value (name = value) assignments 
@@ -124,14 +124,14 @@ namespace mcc
             TraceListValues(registers.Values.ToList<string>(), string.Format("Warning in line {0}: found unmatched <= assignments: ", LineNumber.ToString()));
             TraceListValues(values.Values.ToList<string>(), string.Format("Warning in line {0}: found unmatched = assignments: ", LineNumber.ToString()));
 
-            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), false, "Code: ");
+            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), false, "code");
         }
 
         private void TraceListValues(List<string> list, string warning)
         {
             if (list != null && list.Count > 0)
             {
-                WriteWarning($"{warning} {GetConcatenatedList(list, new char[] { ',', ' '})}");
+                logger.WriteLine($"{warning} {GetConcatenatedList(list, new char[] { ',', ' '})}");
             }
         }
 

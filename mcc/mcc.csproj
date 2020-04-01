@@ -58,6 +58,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Alias.cs" />
+    <Compile Include="Logger.cs" />
     <Compile Include="Map.cs" />
     <Compile Include="Mapper.cs" />
     <Compile Include="MccException.cs" />
@@ -79,6 +80,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="CDP180X.mcc" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.6.1">

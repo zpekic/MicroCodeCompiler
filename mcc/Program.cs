@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,30 +14,29 @@ namespace mcc
         static List<ParsedLine> parsedLines = new List<ParsedLine>();
         static Dictionary<string, int> labelLine = new Dictionary<string, int>();
         static Dictionary<string, int> labelOrg = new Dictionary<string, int>();
-        //static Code code;
-        //static Mapper mapper;
-        //static int microcodeDepth, microcodeWidth;
         static System.IO.StreamReader sourceFile;
+        static Logger logger;
 
         static int Main(string[] args)
         {
             try
             {
-                PrintBanner();
+                logger = new Logger(args);
+                logger.PrintBanner();
                 Assert(args.Length > 0, "Source file [path\\]name missing.");
 
                 Pass0(args[0]);
-                Pass1();
+                Pass1(args[0]);
                 return 0;   // success
             }
             catch (MccException ex)
             {
-                ParsedLine.WriteError(ex.Message);
+                logger.WriteLine(ex.Message);
                 return 1;
             }
             catch (System.Exception ex)
             {
-                ParsedLine.WriteError(string.Format("Error in line {0}: {1}", lineCounter.ToString(), ex.Message));
+                logger.WriteLine(string.Format("Error in line {0}: {1}", lineCounter.ToString(), ex.Message));
                 return 2;
             }
             finally
@@ -48,10 +46,6 @@ namespace mcc
                     sourceFile.Close();
                 }
             }
-            //    // Suspend the screen.  
-            //    System.Console.ReadLine();
-            //}
-
         }
 
         private static void Pass0(string sourceFileName)
@@ -65,9 +59,9 @@ namespace mcc
             //int fieldLeftPos = -1; // microinstruction word top bit position not yet initialized
 
             // Read the file and display it line by line.  
-            Assert(File.Exists(sourceFileName), string.Format("Source file '{0}' not found", sourceFileName));
+            Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
 
-            System.Console.WriteLine(string.Format("Compiling {0}, pass 1 out of 2.", sourceFileName));
+            logger.WriteLine($"Compiling {sourceFileName}, pass 1 out of 2.");
 
             sourceFile = new System.IO.StreamReader(sourceFileName);
             while ((rawLine = sourceFile.ReadLine()) != null)
@@ -87,7 +81,7 @@ namespace mcc
                         //Assert(GetMemorySize(code, out microcodeDepth, out microcodeWidth), ".code size not yet defined");
                         //Assert((newValue > 0) && (newValue < microcodeDepth), string.Format(".org value of '{0}' out of allowed range 0 .. {1}.", newValue.ToString(), (microcodeDepth - 1).ToString()));
                         //Assert((newValue > orgValue) && (newValue < microcodeDepth), string.Format(".org value of '{0}' out of allowed range {1} .. {2}.", newValue.ToString(), (orgValue + 1).ToString(), (microcodeDepth - 1).ToString()));
-                        Org org = new Org(lineCounter, -1, label, content, null);
+                        Org org = new Org(lineCounter, -1, label, content, logger);
                         if (((ParsedLine) org).Pass1() == null)
                         {
                             orgValue = org.GetUpdatedOrgValue(orgValue);
@@ -109,7 +103,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".code outside definition section.");
 
-                        Code code = new Code(lineCounter, orgValue, label, content, null);
+                        Code code = new Code(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine) code;
                         continuationLine = ((ParsedLine) code).Pass1();
                         parsedLines.Add(code);
@@ -122,7 +116,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".mapper outside definition section.");
 
-                        Mapper mapper = new Mapper(lineCounter, orgValue, label, content, null);
+                        Mapper mapper = new Mapper(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
                         continuationLine = ((ParsedLine) mapper).Pass1();
                         parsedLines.Add(mapper);
@@ -135,7 +129,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(inImplementationSection, ".map outside implementation section.");
 
-                        Map map = new Map(lineCounter, orgValue, label, content, null);
+                        Map map = new Map(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)map;
                         continuationLine = ((ParsedLine) map).Pass1();
                         parsedLines.Add(map);
@@ -148,7 +142,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".if outside definition section.");
 
-                        FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, null);
+                        FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fi.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fi;
                         continuationLine = ((ParsedLine) fi).Pass1();
@@ -163,7 +157,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".then outside definition section.");
 
-                        FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, null);
+                        FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = ft.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)ft;
                         continuationLine = ((ParsedLine) ft).Pass1();
@@ -177,7 +171,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".else outside definition section.");
 
-                        FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, null);
+                        FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fe.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fe;
                         continuationLine = ((ParsedLine) fe).Pass1();
@@ -191,7 +185,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".regfield outside definition section.");
 
-                        FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, null);
+                        FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fr.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fr;
                         continuationLine = ((ParsedLine) fr).Pass1();
@@ -205,7 +199,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
-                        FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, null);
+                        FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fv.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fv;
                         continuationLine = ((ParsedLine) fv).Pass1();
@@ -219,7 +213,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
-                        Alias alias = new Alias(lineCounter, orgValue, label, content, null);
+                        Alias alias = new Alias(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)alias;
                         continuationLine = ((ParsedLine) alias).Pass1();
                         parsedLines.Add(alias);
@@ -239,7 +233,7 @@ namespace mcc
 
                         if (ParsedLine.Split3(rawLine, ":", out label, out content))
                         {
-                            microInstruction = new MicroInstruction(lineCounter, orgValue, label, content, parsedLines);
+                            microInstruction = new MicroInstruction(lineCounter, orgValue, label, content, parsedLines, logger);
                             inImplementationSection = true;
                             if (!label.StartsWith("_"))
                             {
@@ -249,7 +243,7 @@ namespace mcc
                         }
                         else
                         {
-                            microInstruction = new MicroInstruction(lineCounter, orgValue, string.Empty, rawLine, parsedLines);
+                            microInstruction = new MicroInstruction(lineCounter, orgValue, string.Empty, rawLine, parsedLines, logger);
                             inImplementationSection = true;
                         }
 
@@ -280,11 +274,11 @@ namespace mcc
             }
             sourceFile.Close();
 
-            System.Console.WriteLine("Pass 1 succeeded: {0} line(s) read, {1} statement(s) parsed.", lineCounter.ToString(), parsedLines.Count.ToString());
+            logger.WriteLine($"Success: pass 1 {lineCounter.ToString()} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
         }
 
 
-        private static void Pass1()
+        private static void Pass1(string sourceFileName)
         {
             Code code = null;
             int codeDepth = -1; 
@@ -297,7 +291,7 @@ namespace mcc
 
             List<MicroField> fields = new List<MicroField>();
 
-            System.Console.WriteLine(string.Format("Compiling {0}, pass 2 out of 2.", "..."));
+            logger.WriteLine($"Compiling {sourceFileName}, pass 2 out of 2.");
 
             foreach (ParsedLine pl in parsedLines)
             {
@@ -348,19 +342,20 @@ namespace mcc
 
             int outputFileCount = Generate((MemBlock) code, true, "Generating code: ", fields);
             outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null);
-            System.Console.WriteLine("Pass 2 succeeded: {0} file(s) generated.", outputFileCount.ToString());
+
+            logger.WriteLine($"Success: pass 2 - {outputFileCount.ToString()} file(s) generated.");
         }
 
         static int Generate(MemBlock mem, bool allowUninitialized, string trace, List<MicroField> fields)
         {
-            System.Console.Write(trace);
+            logger.Write(trace);
             if (mem == null)
             {
-                System.Console.WriteLine(" skipped.");
+                logger.WriteLine(" skipped.");
                 return 0;
             }
 
-            System.Console.WriteLine();
+            logger.WriteLine(string.Empty);
             return mem.Generate(allowUninitialized, fields);
         }
 
@@ -369,17 +364,6 @@ namespace mcc
             Assert(!string.IsNullOrEmpty(label), "Invalid label");
             Assert(!labelLine.Keys.Contains(label), string.Format("Label '{0}' already defined", label));
             labelLine.Add(label, lineCounter);
-        }
-
-        private static void PrintBanner()
-        {
-            string assemblyVersion = Assembly.GetExecutingAssembly().GetName().Version.ToString();
-            string fileVersion = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion;
-            string productVersion = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion;
-
-            System.Console.WriteLine();
-            System.Console.WriteLine(string.Format("mcc V{0} - Custom microcode compiler (c)2020-... https://github.com/zpekic/MicroCodeCompiler", fileVersion));
-            System.Console.WriteLine();
         }
 
         private static void Assert(bool condition, string exceptionMessage)

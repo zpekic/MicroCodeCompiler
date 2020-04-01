@@ -6,27 +6,29 @@ namespace mcc
 {
     internal class Code : MemBlock
     {
-        public Code(int lineNumber, int orgValue, string label, string content, object[] data) : base(lineNumber, orgValue, label, content, data)
+        public Code(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
         {
         }
 
         protected override int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields)
         {
-            System.Console.Write($"Generating code '{outputFileInfo.FullName}' ...");
+            logger.Write($"Generating code '{outputFileInfo.FullName}' ...");
             string template = LoadFile("code_template.vhd");
             int capacity = 2 << (this.addressWidth - 1);
 
             using (System.IO.StreamWriter vhdFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
+                logger.PrintBanner(vhdFile);
                 template = template.Replace("[NAME]", outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf(".")));
                 template = template.Replace("[FIELDS]", GetVhdFields(fields));
                 template = template.Replace("[TYPE]", $"type code_memory is array(0 to {capacity - 1}) of std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[SIGNAL]", $"signal ucode: std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[MEMORY]", $"constant microcode: code_memory := ({GetVhdMemory(capacity)});");
+                template = template.Replace("[PLACEHOLDERS]", " [NAME], [TYPE], [FIELDS], [SIGNAL], [MEMORY]");
                 vhdFile.WriteLine(template);
             }
 
-            System.Console.WriteLine(" Done.");
+            logger.WriteLine(" Done.");
             return 1;
         }
 

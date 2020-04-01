@@ -8,7 +8,7 @@ namespace mcc
 {
     internal class Org : ParsedLineWithNoLabel
     {
-        public Org(int lineNumber, int orgValue, string label, string content, object[] data) : base(lineNumber, orgValue, label, content, data)
+        public Org(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
         {
         }
 
@@ -17,7 +17,7 @@ namespace mcc
             int value, mask;
 
             base.ParseContent();
-            Assert(ParsedLine.GetValueAndMask(this.Content, out value, out mask), ".org: Error parsing value");
+            Assert(GetValueAndMask(this.Content, out value, out mask, null), ".org: Error parsing value");
             Assert(mask == 0, string.Format(".org: Mask '{0}' not allowed", mask.ToString()));
             Assert(value >= 0, string.Format(".org: Value '{0}' not allowed", mask.ToString()));
             this.OrgValue = value;

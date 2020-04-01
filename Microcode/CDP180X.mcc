@@ -1,0 +1,558 @@
+//----------------------------------------------------------
+//	CDP1802/05/06 Microcode (c) 2020-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//----------------------------------------------------------
+			.code 8, 72, cdp180x_code.mif, cdp180x_code.cgf, cdp180x_code.vhd, cdp180x_code.hex, 16;
+			.mapper 9, 8, cdp180x_map.mif, cdp180x_map.cgf, cdp180x_map.vhd, cdp180x_map.hex, 1;
+
+seq_cond:		.if 4 values 
+				true, 			// hard-code to 1
+				mode_1805, 		// external signal enabling 1805/1806 instructions
+				continue,		// nDMA_IN and nDMA_OUT and nINT sampled at trailing edge of TPB?
+				cond_3X,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
+				tpa_wait,		// held low when tpa is low, otherwise inverse of nWAIT on clock rise
+				tpb_wait,		// held low when tpb is low, otherwise inverse of nWAIT on clock rise
+				fastMemAccess,	// enable fast memory access (full A15..A0, no multiplexing)
+				dma_in,
+				dma_out,
+				interrupt, 
+				cond_a,			// not used
+				cond_b,			// not used
+				cond_CX,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
+				traceEnabled,	// high to trace each instruction
+				traceReady,		// high if tracer has processed the trace character
+				false			// hard-code to 0
+				default true;
+seq_then:	.then 8 values next, repeat, return, fork, @ default next;				// any label
+seq_else:	.else 8 values next, repeat, return, fork, 0x00..0xFF, @ default next;		// any value as it can be a trace char
+			
+// registers documented to be present in the original 180X
+reg_d:		.regfield 2 values same, alu_y, shift_up, shift_dn default same;	// 8 bit accumulator
+reg_df:		.regfield 2 values same, zero, one, alu_cout default same;	// 1 bit data overflow (== carry) bit
+reg_b:		.regfield 3 values same, alu_y, bus, t, flags, xp, t default same;	// 8 bit aux data register
+reg_p:		.regfield 2 values same, n, default same;					// 4 bit program counter pointer
+reg_x:		.regfield 2 values same, n, default same;					// 4 bit index register pointer
+reg_in:		.regfield 1 values same, bus default same;					// 8 bit instruction register
+reg_t:		.regfield 3 values same, xp, b default same;				// 8 bit temporary register
+reg_q:		.regfield 2 values same, zero, one default same;			// 1 bit output flip-flop
+reg_mie:	.regfield 2 values same, enable, disable default same;		// 1 bit master interrupt enable
+
+// registers specific to this design
+reg_trace:	.regfield 2 values same, 				// reg_trace <= reg_trace
+								ss_enable_zero, 	// reg_trace <= 0b0_00000000 b8 enables single stepping
+								ss_disable_zero, 	// reg_trace <= 0b1_00000000 b8 disables single stepping
+								ss_disable_char 	// reg_trace <= 0b1_<else_value> capture trace char
+								default same;
+								
+reg_extend:	.regfield 2 values same, zero, one default same;			// 1 bit instruction register extension
+reg_n:		.regfield 2 values same, zero, n default same;				// drives N3..0 lines for I/O operations
+reg_sample:	.valfield 1 values same, capture default same;				// pulse to 1 to capture nDMA_IN, nDMA_OUT, nINT, nEFx
+
+//	controls the 16 * 16 register file, as 2 halves of 16 * 8 (lo and hi)
+//	in first cycle reg_addr needs to be set, and in next one reg_lo and reg_hi act as two independent 8 bit regs
+reg_lo:		.regfield 1 values alu16_ylo, alu_y default alu16_ylo;			// note that alu16_ylo and alu16_f defaults mean no change
+reg_hi:		.regfield 1 values alu16_yhi, alu_y default alu16_yhi;			// note that alu16_yhi and alu16_f defaults mean no change
+reg_addr:	.regfield 3	values same, zero, one, two, x, n, p default zero;	// address of 1 of 16 regs
+
+// 16-bit ALU to operate on 16*16 register file
+alu16_f:	.valfield 2 values nop, clear, plus_one, minus_one default nop;	// connect them cleverly to 16-bit adder, one one side "and" and other is 0x0000 or 0xFFFF
+
+// 8-bit ALU for arithmetic and logical operations
+alu_r:		.valfield 2 values zero, d, not_b, reg_hi default zero;
+alu_s:		.valfield 3 values zero, b, not_d, reg_lo default zero;
+alu_f:		.valfield 2 values ior, and, xor, adc default ior;
+alu_cin:	.valfield 2 values zero, one, reg_df default zero;
+alu_mode:	.regfield 2 values same, binary, decimal default binary; 
+ 
+// Bus control signals 
+sc:			.valfield 2 values sc_fetch, sc_execute, sc_dma, sc_interrupt default sc_execute;
+tpa:		.valfield 1 values 0, 1 default 0;
+tpb:		.valfield 1 values 0, 1 default 0;
+mrd:		.valfield 1 values 0, 1 default 1;	
+mwr:		.valfield 1 values 0, 1 default 1;	
+amux:		.valfield 1 values 0, 1 default 0;	// 1 selects A15..8, 0 selects A7..0
+dataout:	.valfield 1 values 0, 1 default 1;	// must be 0 to enable B register output to data bus
+ 
+//	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
+CR:			.alias 0x0D;
+LF:			.alias 0x0A;
+trace:		.alias reg_trace <= ss_disable_char, if true then traceChar else;
+
+sc_fetch:		.alias sc = sc_fetch;
+sc_execute:		.alias sc = sc_execute;
+sc_dma:			.alias sc = sc_dma;
+sc_interrupt:	.alias sc = sc_interrupt;
+tpa:		.alias tpa = 1;
+tpb:		.alias tpb = 1;
+mrd:		.alias mrd = 0;
+mwr:		.alias mwr = 0;
+addr_hi:	.alias amux = 1;
+addr_lo:	.alias amux = 0;
+oe:			.alias dataout = 0;
+y_zero:		.alias alu_f = ior, alu_r = zero, alu_s = zero; 
+y_d:		.alias alu_f = ior, alu_r = d, alu_s = zero;
+y_b:		.alias alu_f = ior, alu_r = zero, alu_s = b;
+y_lo:		.alias alu_f = ior, alu_r = zero, alu_s = reg_lo;
+y_hi:		.alias alu_f = ior, alu_r = reg_hi, alu_s = zero;
+reg_inc:	.alias alu16_f = plus_one,	reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
+reg_dec:	.alias alu16_f = minus_one,	reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
+reg_clr:	.alias alu16_f = clear,		reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
+goto:		.alias if false then next else;
+gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
+return:		.alias if false then next else return;
+dispatch:	.alias if false then next else fork;
+sample:		.alias reg_sample <= capture;
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations
+//
+//	---------------------------------------------------------------------------
+_reset:		reg_q <= zero, reg_n <= zero, reg_trace <= ss_enable_zero; // TODO: reg_cie <= enable, reg_xie <= enable,  
+_reset1:	reg_t <= xp;
+_reset2:	reg_addr <= zero, reg_mie <= enable, reg_x <= zero, reg_p <= zero;
+_reset3:	reg_clr;	// r(0) = 0;
+
+//	Read memory into instruction register
+//	fetch1 entry point used for 2nd byte of extended instructions
+//	---------------------------------------------------------------------------
+fetch:		sc_fetch, addr_hi, 				alu_mode <= binary, reg_addr <= p, reg_extend <= 0;
+fetch1:		sc_fetch, addr_hi, tpa, mrd, 	if fastMemAccess then next else fetch6;	// speed up for internal memory
+			sc_fetch, addr_hi, tpa, mrd, 	if tpa_wait then repeat else next;
+			sc_fetch, addr_hi,		mrd;
+			sc_fetch, addr_lo,		mrd;
+			sc_fetch, addr_lo, tpb, mrd;
+fetch6:		sc_fetch, addr_lo, tpb, mrd, 	reg_in <= bus, if tpb_wait then repeat else next;
+			sc_fetch, addr_lo, 		mrd, 	reg_inc, reg_addr <= n, sample, if traceEnabled then traceState else fork;	// setting reg address to n allows saving 1 clock cycle for INC, DEC, PLO, PHI, GLO, GHI
+
+//	Read memory into B register
+//	reg_addr has to be setup prior to calling!
+//	---------------------------------------------------------------------------
+read_b:		sc_execute, addr_hi, reg_n <= zero;
+			sc_execute, addr_hi, tpa,	mrd, if fastMemAccess then next else read_b6;	// speed up for internal memory
+			sc_execute, addr_hi, tpa,	mrd, if tpa_wait then repeat else next;
+			sc_execute, addr_hi,		mrd;
+			sc_execute, addr_lo,		mrd;
+			sc_execute, addr_lo, tpb,	mrd;
+read_b6:	sc_execute, addr_lo, tpb,	mrd, reg_b <= bus, if tpb_wait then repeat else next;
+			sc_execute, addr_lo, 		mrd, return;	
+
+//	Write B register to memory
+//	reg_addr has to be setup prior to calling!
+//	---------------------------------------------------------------------------
+write_b:	sc_execute, addr_hi, reg_n <= zero;
+			sc_execute, addr_hi, tpa,	oe, if fastMemAccess then next else write_b6;	// speed up for internal memory
+			sc_execute, addr_hi, tpa,	oe, if tpa_wait then repeat else next;
+			sc_execute, addr_hi,		oe, mwr;
+			sc_execute, addr_lo,		oe, mwr;
+			sc_execute, addr_lo, tpb,	oe, mwr;
+write_b6:	sc_execute, addr_lo, tpb,	oe, mwr, if tpb_wait then repeat else next;
+			sc_execute, addr_lo, 		oe, return;	
+
+//	Respond to DMA or INT requests
+//	These requests are honored at the end of each instruction execution
+//	--------------------------------------------------------------------------
+dma_or_int:	reg_addr <= zero, if dma_in then dma_in else next;
+
+			reg_addr <= zero, if dma_out then dma_out else next;
+
+			if intreq then next else fetch;
+
+int_ack:	sc_interrupt, reg_t <= xp;		// interrupt acknowledge
+
+			sc_interrupt, reg_p <= 1, reg_x <= two, reg_mie <= 0, goto fetch;
+
+dma_in:		sc_dma, addr_hi, reg_n <= zero;
+			sc_dma, addr_hi, tpa,	if fastMemAccess then next else dma_in6;	// speed up for internal memory
+			sc_dma, addr_hi, tpa,	if tpa_wait then repeat else next;
+			sc_dma, addr_hi,		mwr;
+			sc_dma, addr_lo,		mwr;
+			sc_dma, addr_lo, tpb,	mwr;
+dma_in6:	sc_dma, addr_lo, tpb,	mwr, sample, if tpb_wait then repeat else next;
+			sc_dma, addr_lo, 		reg_inc, if continue then fetch else dma_or_int;	
+
+dma_out:	sc_dma, addr_hi, reg_n <= zero;
+			sc_dma, addr_hi, tpa,	mrd, if fastMemAccess then next else dma_out6;	// speed up for internal memory
+			sc_dma, addr_hi, tpa,	mrd, if tpa_wait then repeat else next;
+			sc_dma, addr_hi,		mrd;
+			sc_dma, addr_lo,		mrd;
+			sc_dma, addr_lo, tpb,	mrd;
+dma_out6:	sc_dma, addr_lo, tpb,	mrd, if tpb_wait then repeat else next;
+			sc_dma, addr_lo, 		mrd, reg_inc, if continue then fetch else dma_or_int;	
+
+//	Output internal state in following format:
+//	D=?? FL=?? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
+//	trace mux selection is:
+//	0XXXXXXX ... 7 bit ASCII character in XXXXXXX
+//	1XXXXXX0 ... ALU output, low nibble
+//	1XXXXXX1 ... ALU output, high nibble
+//	-----------------------------------------------------------------------------
+traceState:	trace 'D';
+			trace '=';
+			gosub traceB;
+
+			reg_b <= flags, trace 'F';
+			trace 'L';
+			gosub traceB;
+			
+			reg_b <= xp, trace 'X';
+			trace 'P';
+			gosub traceB;
+
+			reg_b <= in, trace 'I';
+			trace 'N';
+			gosub traceB;
+
+			reg_addr <= zero, trace 'R';
+			trace '0';
+			gosub traceReg;
+			
+			reg_addr <= one, trace 'R';
+			trace '1';
+			gosub traceReg;
+			
+			reg_addr <= two, trace 'R';
+			trace '2';
+			gosub traceReg;
+			
+			reg_addr <= x, trace 'R';
+			trace 'X';
+			gosub traceReg;
+			
+			reg_addr <= p, trace 'R';
+			trace 'P';
+			gosub traceReg;
+
+			reg_addr <= n, trace 'R';	// set to n last as this is the assumption when execution starts
+			trace 'P';
+			gosub traceReg;
+			
+			trace CR;
+			trace LF;
+			
+			reg_trace <= ss_enable_zero, dispatch;	// resume with instruction execution
+
+traceReg:	trace '=';
+			y_hi, trace 0b10000_001;
+			y_hi, trace 0b10000_000;
+			y_lo, trace 0b10000_001;
+			y_lo, trace 0b10000_000;
+			trace ' ';
+			return;
+
+traceB:		trace '=';
+			y_b, trace 0b10000_001;
+			y_b, trace 0b10000_000;
+			trace ' ';
+			return;
+
+traceChar:  if traceReady then next else repeat;		
+			reg_trace <= ss_disable_zero, return;
+			
+//--------------------------------------------------------
+//	1802 basic instructions
+//--------------------------------------------------------
+			.map 0b0_0000_????;	// assumes reg_addr <= n;
+LDN:		gosub read_b;
+			
+			reg_d <= alu_y, y_b,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_0000_0000;	// override for LDN 0
+IDL:		sample;
+			// dead loop until DMA or INT detected
+			if continue then IDL else dma_or_int;
+
+			.map 0b0_0001_????;	// assumes reg_addr <= n;
+INC:		reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0010_????;	// assumes reg_addr <= n
+DEC: 		reg_dec,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0011_????;	// 2 byte branch instructions
+SBRANCH:	reg_addr <= p,
+			if cond_3X then next else INC;
+			
+			gosub read_b;
+			
+sbranch2:	reg_lo <= alu_y, y_b,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0100_????;	// assumes reg_addr <= n;
+LDA:		gosub read_b;
+
+			reg_d <= alu_y, y_b,
+			goto INC;
+
+			.map 0b0_0101_????;	// assumes reg_addr <= n;
+STR:		reg_b <= alu_y, y_d, gosub write_b;		
+
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0110_0???;
+OUT:		sc_execute, addr_hi, reg_addr <= x, reg_n <= n;
+			sc_execute, addr_hi, tpa,	mrd, if fastMemAccess then next else out6;	// speed up for internal memory
+			sc_execute, addr_hi, tpa,	mrd, if tpa_wait then repeat else next;
+			sc_execute, addr_hi,		mrd;
+			sc_execute, addr_lo,		mrd;
+			sc_execute, addr_lo, tpb,	mrd;
+out6:		sc_execute, addr_lo, tpb,	mrd, if tpb_wait then repeat else next;
+			sc_execute, addr_lo, 		mrd, reg_n <= zero, 
+			goto INC;
+
+			.map 0b0_0110_0000;	// override for OUT 0
+IRX: 		reg_addr <= x,
+			goto INC;
+
+			.map 0b0_0110_1???;
+INP:		sc_execute, addr_hi, reg_addr <= x, reg_n <= n, reg_enableoutput <= false;
+			sc_execute, addr_hi, tpa,	if fastMemAccess then next else write_b6;	// speed up for internal memory
+			sc_execute, addr_hi, tpa,	if tpa_wait then repeat else next;
+			sc_execute, addr_hi,		mwr;
+			sc_execute, addr_lo,		mwr;
+			sc_execute, addr_lo, tpb,	mwr;
+inp6:		sc_execute, addr_lo, tpb,	mwr, reg_b <= bus, if tpb_wait then repeat else next;
+			sc_execute, addr_lo, 		reg_n <= zero, reg_d <= alu_y, y_b, 
+			if continue then fetch else dma_or_int;	
+
+			.map 0b0_0110_1000;	// override for INP 0 is the linking opcode for extended instructions			
+EXTEND:		if mode_1805 then next else NOP;
+			
+			sc_fetch, addr_hi, alu_mode <= decimal, reg_addr <= p, reg_extend <= one,	// reg_extend acts like bit 8 of the instruction register
+			goto fetch1;
+
+			.map 0b0_0111_0000;
+RET:		reg_addr <= x, gosub read_b;
+
+			reg_x <= b_hi, reg_p <= b_lo, reg_mie <= one, goto INC;
+
+			.map 0b0_0111_0001;
+DIS:		reg_addr <= x, gosub read_b;
+
+			reg_x <= b_hi, reg_p <= b_lo, reg_mie <= zero, goto INC;
+
+			.map 0b0_0111_0010;
+LDXA:		reg_addr <= x, gosub read_b;
+
+			reg_d <= alu_y, y_b,
+			goto INC;
+
+			.map 0b0_0111_0011;
+STXD:		reg_addr <= x, reg_b <= alu_y, y_d, gosub write_b;
+
+			reg_dec, if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0100;
+ADC:		reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = b, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0101;
+SDB:		reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = b, alu_s = notd, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0110;
+SHRC:		reg_d <= shift_dn, reg_df <= d0, shift_in = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0111;
+SMB:		reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = notb, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1000;
+SAV:		reg_addr <= x, reg_b <= t, gosub write_b;
+
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1001;
+MARK:		reg_addr <= two, reg_t <= xp;
+
+			reg_b <= t, gosub write_b;
+			
+			reg_x <= p, goto DEC;
+
+			.map 0b0_0111_1010;
+REQ:		reg_q <= zero, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1011;
+SEQ:		reg_q <= one, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1100;
+ADCI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = b, alu_cin = df, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+
+
+			.map 0b0_0111_1101;
+SDBI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = b, alu_s = notd, alu_cin = df, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+
+
+			.map 0b0_0111_1110;
+SHLC:		reg_d <= shift_up, reg_df <= d7, shift_in = df, if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1111;
+SMBI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = notb, alu_cin = df, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1000_????;	// d <= r(n).lo ior 0x00, assume reg_addr <= n;
+GLO:		reg_d <= alu_y, y_lo,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1001_????;	// d <= r(n).hi ior 0x00, assume reg_addr <= n;
+GHI:		reg_d <= alu_y, y_hi,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1010_????;	// r(n).lo <= d ior 0x00, assume reg_addr <= n;
+PLO:		reg_lo <= alu_y, y_d,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1011_????;	// r(n).hi <= d ior 0x00, assume reg_addr <= n;
+PHI:		reg_hi <= alu_y, y_d,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1100_????;	// 3 byte branch instructions
+LBRANCH:	reg_addr <= p; if cond_CX then next else inc2;
+			
+			gosub read_b;
+			
+			reg_t <= b, reg_inc, gosub read_b;	
+			
+			reg_lo <= alu_y, y_b, reg_b <= t;
+
+			reg_hi <= alu_y, y_b, if continue then fetch else dma_or_int;
+			
+inc2:		reg_inc,		// r(p) ++
+			goto INC;		// r(p) ++
+
+			.map 0b0_1100_0100;	// override for 0xC4 LBRANCH
+NOP:		if continue then fetch else dma_or_int;
+				
+			.map 0b0_1101_????;
+SEP:		reg_p <= n,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1110_????;
+SEX:		reg_x <= n,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1111_0000;
+LDX:		reg_addr <= x, gosub read_b;
+
+			reg_d <= alu_y, y_b, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0001;
+OR:			reg_addr <= x, gosub read_b;
+
+			reg_d <= alu_y, alu_f = ior, alu_r = d, alu_s = b, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0010;
+AND:		reg_addr <= x, gosub read_b;
+
+			reg_d <= alu_y, alu_f = and, alu_r = d, alu_s = b, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0011;
+XOR:		reg_addr <= x, gosub read_b;
+
+			reg_d <= alu_y, alu_f = xor, alu_r = d, alu_s = b, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0100;
+ADD:		reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = b, alu_cin = zero, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0101;
+SD:			reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = b, alu_s = notd, alu_cin = one, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0110;
+SHR:		reg_d <= shift_dn, reg_df <= d0, shift_in = zero, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0111;
+SM:			reg_addr <= x, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = notb, alu_cin = one, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1111_1000;
+LDI:		reg_addr <= p, gosub read_b;
+
+			reg_d <= alu_y, y_b, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1001;
+ORI:		reg_addr <= p, gosub read_b;
+
+			reg_d <= alu_y, alu_f = ior, alu_r = d, alu_s = b, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1010;
+ANI:		reg_addr <= p, gosub read_b;
+
+			reg_d <= alu_y, alu_f = and, alu_r = d, alu_s = b, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1011;
+XRI:		reg_addr <= p, gosub read_b;
+
+			reg_d <= alu_y, alu_f = xor, alu_r = d, alu_s = b,
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1100;
+ADI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = b, alu_cin = zero, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1101;
+SDI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = b, alu_s = notd, alu_cin = one, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1110;
+SHL:		reg_d <= shift_up, reg_df <= d7, shift_in = zero, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1111;
+SMI:		reg_addr <= p, gosub read_b;
+
+			reg_df <= alu_cout, reg_d <= alu_y, alu_f = adc, alu_r = d, alu_s = notb, alu_cin = one, 
+			reg_inc,
+			if continue then fetch else dma_or_int;
+			
+//--------------------------------------------------------
+//	1805/06 extended instructions
+//--------------------------------------------------------
+		.map 0b1_????_????;
+XNOP:	goto NOP;

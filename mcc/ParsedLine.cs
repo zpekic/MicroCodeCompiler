@@ -12,6 +12,7 @@ namespace mcc
         public int OrgValue;
         public string Label;
         public string Content;
+        protected Logger logger;
 
         private Dictionary<string, string> Bin2Hex = new Dictionary<string, string>()
         {
@@ -19,12 +20,13 @@ namespace mcc
             { "1000", "8"}, { "1001", "9"}, { "1010", "A"}, { "1011", "B"}, { "1100", "C"}, { "1101", "D"}, { "1110", "E"}, { "1111", "F"},
         };
 
-        public ParsedLine(int lineNumber, int orgValue, string label, string content)
+        public ParsedLine(int lineNumber, int orgValue, string label, string content, Logger logger)
         {
             this.LineNumber = lineNumber;
             this.OrgValue = orgValue;
             this.Label = label.TrimEnd(new char[] { ':' });
             this.Content = content;
+            this.logger = logger;
         }
 
         public ParsedLine Pass1()
@@ -69,7 +71,7 @@ namespace mcc
             {
                 // quick check to prevent long labels and constant values as labels
                 Assert(this.Label.Length < 17, string.Format("Invalid label '{0}' (longer than 16 characters)", this.Label));
-                Assert(!GetValueAndMask(this.Label, out v, out m), string.Format("Invalid label '{0}' (can be interpreted as value)", this.Label));
+                Assert(!GetValueAndMask(this.Label, out v, out m, null), string.Format("Invalid label '{0}' (can be interpreted as value)", this.Label));
             }
             // derived classes do something specific
         }
@@ -81,14 +83,47 @@ namespace mcc
         // 0x|X<hex> (_ delimiter and ? mask allowed)
         // 'string' (_, ?, " treated as characters, therefore no mask, each char is single byte (ASCII code with bit 7 cleared))
         // "string" (_, ?, ' treated as characters, therefore no mask, each char is single byte (ASCII code with bit 7 cleared))
-        public static bool GetValueAndMask(string v, out int value, out int mask)
+        // $ - current .orgValue
+        // @label - address of label
+        protected bool GetValueAndMask(string v, out int value, out int mask, Dictionary<string, int> targets)
         {
             value = 0;
             mask = 0;
 
-            // TODO - parse binary, decimal, octal, hex, char ' and char "
+            string input = v.Trim();
+            if (string.IsNullOrEmpty(input))
+            {
+                return false;
+            }
+
+            if (input.StartsWith("@"))
+            {
+                string label = input.Substring(1);
+                if (!string.IsNullOrEmpty(label))
+                {
+                    Assert((targets != null) && (targets.Count > 0), "Trying to use @label with no targets available");
+                    if (targets.ContainsKey(label))
+                    {
+                        value = targets[label];
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            if (input.StartsWith("$"))
+            {
+                string label = input.Substring(1);
+                if (!string.IsNullOrEmpty(label))
+                {
+                    logger.WriteLine(string.Format("Warning: line {0} - label '{1}' after $ ignored" , LineNumber.ToString(), label));
+                }
+                value = this.OrgValue;
+                return true;
+            }
+
             int power = -1; // meaning not determined yet
-            char[] chars = v.Trim().ToCharArray();
+            char[] chars = input.ToCharArray();
             foreach(char c in chars)
             {
                 switch (c)
@@ -342,16 +377,6 @@ namespace mcc
             return false;
         }
 
-        public static void WriteError(string error)
-        {
-            WriteWithColor(error, ConsoleColor.Red);
-        }
-
-        public static void WriteWarning(string error)
-        {
-            WriteWithColor(error, ConsoleColor.Yellow);
-        }
-
         public string GetParsedLineString()
         {
             StringBuilder sbLine = new StringBuilder($"L{LineNumber:D4}");
@@ -476,14 +501,6 @@ namespace mcc
             }
 
             return trimmedString;
-        }
-
-        private static void WriteWithColor(string error, ConsoleColor penColor)
-        {
-            ConsoleColor currentFgColor = Console.ForegroundColor;
-            Console.ForegroundColor = penColor;
-            System.Console.WriteLine(error);
-            Console.ForegroundColor = currentFgColor;
         }
 
     }

@@ -25,7 +25,7 @@ namespace mcc
             }
         }
 
-        public MemBlock(int lineNumber, int orgValue, string label, string content, object[] data) : base(lineNumber, orgValue, label, content, data)
+        public MemBlock(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
         }
@@ -48,21 +48,20 @@ namespace mcc
             Assert(outputFiles.Count >= 0, "No output files specified");
         }
 
-        public void Write(int address, string data, string comment, bool allowOverwrite, string prefix)
+        public void Write(int address, string data, string comment, bool allowOverwrite, string flavor)
         {
-            System.Console.Write(prefix);
-            Assert(address < (2 << this.addressWidth), string.Format("Tying to write to location {0:X4} beyond memory limit of {1:X4} .. {2:X4}", address, 0, (2 << this.addressWidth) - 1));
+            Assert(address < (2 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
             string rawBinaryString = data.Replace("_", string.Empty);
-            Assert(rawBinaryString.Length == this.dataWidth, string.Format("Invalid data width of {0} ({1} expected)", rawBinaryString.Length, this.dataWidth));
+            Assert(rawBinaryString.Length == this.dataWidth, $"Invalid {flavor} data width of {rawBinaryString.Length} ({this.dataWidth} expected)");
             if (memory.ContainsKey(address))
             {
-                Assert(allowOverwrite, string.Format("Attempting to overwrite location '{0:X4}'", address));
-                WriteWarning(string.Format("Warning in line {2}: overwriting '{0}' with '{1}' at {2:X4}", memory[address].Data, data, address, this.Label.ToString()));
+                Assert(allowOverwrite, $"Attempting to overwrite {flavor} location '{address:X4}'");
+                logger.WriteLine($"Warning in line {LineNumber}: overwriting '{memory[address].Data}' with '{data}' at {flavor}[{address:X4}]");
                 memory.Remove(address);
             }
             else
             {
-                System.Console.WriteLine(string.Format("Writing '{0}' to {1:X4}", data, address));
+                logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
             }
             memory.Add(address, new DataVector(data, comment));
         }
@@ -83,14 +82,14 @@ namespace mcc
             {
                 int startRange = 0;
                 int endRange = -1;
-                WriteWarning(string.Format("Warning in line {0}: found {1} uninitialized locations:", this.LineNumber.ToString(), emptyLocationCount.ToString()));
+                StringBuilder sbUninit = new StringBuilder($"Warning in line {LineNumber.ToString()}: found {emptyLocationCount.ToString()} uninitialized locations:");
                 for (int address = 0; address < capacity; address++)
                 {
                     if (memory.ContainsKey(address))
                     {
                         if (endRange >= startRange)
                         {
-                            System.Console.WriteLine(string.Format("{0:X4} .. {1:X4}", startRange, endRange));
+                            sbUninit.AppendLine($"{startRange:X4} .. {endRange:X4}");
                         }
                         startRange = address + 1;
                     }
@@ -102,9 +101,10 @@ namespace mcc
                 // if open ended block has been found
                 if (endRange >= startRange)
                 {
-                    System.Console.WriteLine(string.Format("{0:X4} .. {1:X4}", startRange, endRange));
+                    sbUninit.AppendLine($"{startRange:X4} .. {endRange:X4}");
                 }
 
+                logger.WriteLine(sbUninit.ToString());
                 Assert(allowUninitialized, "All locations must be initialized.");
             }
 
@@ -126,7 +126,7 @@ namespace mcc
                         count += GenerateMifFile(outputFileInfo, this.dataWidth % 4 == 0 ? 16 : 2);
                         break;
                     default:
-                        WriteWarning(string.Format("Warning in line {0}: unsupported extension in file '{1}", this.LineNumber.ToString(), fileName));
+                        logger.WriteLine(string.Format("Warning in line {0}: unsupported extension in file '{1}", this.LineNumber.ToString(), fileName));
                         break;
                 }
             }
@@ -193,7 +193,7 @@ namespace mcc
                 case 16:
                     break;
                 default:
-                    WriteWarning(string.Format("Warning in line {0}: byte width {1} is not power of 2, .hex file not generated", this.LineNumber.ToString(), this.byteWidth.ToString()));
+                    logger.WriteLine(string.Format("Warning in line {0}: byte width {1} is not power of 2, .hex file not generated", this.LineNumber.ToString(), this.byteWidth.ToString()));
                     return 0;
             }
 
@@ -201,7 +201,7 @@ namespace mcc
 
             using (System.IO.StreamWriter hexFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
-                System.Console.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
 
                 int value;
                 int mask;
@@ -231,7 +231,7 @@ namespace mcc
                         record[3] = 0;
                         for (int i = 0; i < this.byteWidth; i++)
                         {
-                            Assert(GetValueAndMask("0B" + rawBinary.Substring(i << 3, 8), out value, out mask), "Non-binary data found in memory. Something went terribly wrong..");
+                            Assert(GetValueAndMask("0B" + rawBinary.Substring(i << 3, 8), out value, out mask, null), "Non-binary data found in memory. Something went terribly wrong..");
                             Assert(mask == 0, "Mask data found in memory. Not supported in current version.");
                             record[i + 4] = (byte) value;
                         }
@@ -255,7 +255,7 @@ namespace mcc
                 record[3] = 1;
                 record[4] = 255;
                 WriteHexFileRecord(hexFile, record, 5, true);
-                System.Console.WriteLine(" Done.");
+                logger.WriteLine(" Done.");
             }
             return 1;
         }
@@ -266,7 +266,7 @@ namespace mcc
 
             using (System.IO.StreamWriter cgfFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
-                System.Console.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
 
                 cgfFile.WriteLine($"#CGF file \"{outputFileInfo.Name}\"");
                 cgfFile.WriteLine($"#memory_block_name={GetBlockName()}");
@@ -304,7 +304,7 @@ namespace mcc
 
                 cgfFile.WriteLine($"#end");
 
-                System.Console.WriteLine(" Done.");
+                logger.WriteLine(" Done.");
             }
             return 1;
         }
@@ -315,7 +315,7 @@ namespace mcc
 
             using (System.IO.StreamWriter cgfFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
-                System.Console.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
 
                 cgfFile.WriteLine($"%---------------------------------%");
                 cgfFile.WriteLine($"WIDTH={dataWidth};");
@@ -393,7 +393,7 @@ namespace mcc
                 cgfFile.WriteLine($"END;");
                 cgfFile.WriteLine($"%---------------------------------%");
 
-                System.Console.WriteLine(" Done.");
+                logger.WriteLine(" Done.");
             }
             return 1;
         }
@@ -407,10 +407,9 @@ namespace mcc
             else
             {
                 StringBuilder sb = new StringBuilder();
-                sb.AppendLine("-------------------------------------------------------");
-                sb.AppendLine("-- Auto-generated by mcc (Custom microcode compiler) --");
-                sb.AppendLine("(c)2020-... https://github.com/zpekic/MicroCodeCompiler");
-                sb.AppendLine("-------------------------------------------------------");
+                sb.AppendLine($"-- Auto-generated file, do not modify. To customize, create '{fileName}' file in mcc.exe folder");
+                sb.AppendLine("-- Supported placeholders: [PLACEHOLDERS].");
+                sb.AppendLine("--------------------------------------------------------");
                 sb.AppendLine("library IEEE;");
                 sb.AppendLine("use IEEE.STD_LOGIC_1164.all;");
                 sb.AppendLine("use IEEE.numeric_std.all;");

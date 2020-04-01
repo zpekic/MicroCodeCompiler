@@ -94,7 +94,7 @@ namespace mcc
             }
         }
 
-        public MicroField(int lineNumber, int orgValue, string label, string content, object[] data) : base(lineNumber, orgValue, label, content)
+        public MicroField(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
 
@@ -109,7 +109,7 @@ namespace mcc
                 // regular field width, start with 
                 this.Hi = start;
                 this.Lo = start - this.Width + 1;
-                System.Console.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
+                logger.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
                 return this.Lo - 1;
             }
             else
@@ -117,7 +117,7 @@ namespace mcc
                 // negative width means overlaps with previous field
                 this.Hi = start + this.Width - 1;
                 this.Lo = start + 1;
-                System.Console.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
+                logger.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
                 return start;
             }
         }
@@ -148,7 +148,7 @@ namespace mcc
                 int v;
 
                 vArray[i] = vArray[i].Trim();
-                if (ParsedLine.GetValueAndMask(vArray[i], out v, out mask))
+                if (GetValueAndMask(vArray[i], out v, out mask, null))
                 {
                     // constant numeric value found
                     // Assert(mask == 0, "Mask not allowed in field definition single value");
@@ -163,9 +163,9 @@ namespace mcc
                         int f, t;
 
                         // range found, both should be constant numeric
-                        Assert(ParsedLine.GetValueAndMask(from, out f, out mask), "Error parsing field definition lower boundary range value");
+                        Assert(GetValueAndMask(from, out f, out mask, null), "Error parsing field definition lower boundary range value");
                         Assert(mask == 0, "Mask not allowed in field definition range value");
-                        Assert(ParsedLine.GetValueAndMask(to, out t, out mask), "Error parsing field definition lower boundary range value");
+                        Assert(GetValueAndMask(to, out t, out mask, null), "Error parsing field definition lower boundary range value");
                         Assert(mask == 0, "Mask not allowed in field definition range value");
                         Values.Add(new ValueVector(CheckRange(f), CheckRange(t)));
 
@@ -202,7 +202,7 @@ namespace mcc
                 }
             }
 
-            ParsedLine.GetValueAndMask(defaultValue, out this.DefaultValue, out mask);
+            GetValueAndMask(defaultValue, out this.DefaultValue, out mask, null);
             Assert(mask == 0, "Mask not allowed in default value");
             this.DefaultValue = CheckRange(this.DefaultValue);
 
@@ -217,7 +217,7 @@ namespace mcc
                 return DefaultValue;
             }
 
-            if (GetValueAndMask(token, out value, out mask))
+            if (GetValueAndMask(token, out value, out mask, null))
             {
                 Assert(mask == 0, string.Format("Trying to assign masked value to '{0}'", Label));
                 // lookup if in matching any valid range
