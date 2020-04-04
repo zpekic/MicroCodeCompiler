@@ -58,21 +58,41 @@ reg_addr:	.regfield 3	values same, zero, one, two, x, n, p default zero;	// addr
 alu16_f:	.valfield 2 values nop, clear, plus_one, minus_one default nop;	// connect them cleverly to 16-bit adder, one one side "and" and other is 0x0000 or 0xFFFF
 
 // 8-bit ALU for arithmetic and logical operations
+// the binary / decimal mode comes directly from instruction bit 8 (reg_extend) as 68XX arithmetic instructions are all decimal
 alu_r:		.valfield 2 values zero, d, not_b, reg_hi default zero;
-alu_s:		.valfield 3 values zero, b, not_d, reg_lo default zero;
-alu_f:		.valfield 2 values ior, and, xor, adc default ior;
-alu_cin:	.valfield 2 values zero, one, reg_df default zero;
-alu_mode:	.regfield 2 values same, binary, decimal default binary; 
+alu_s:		.valfield 2 values zero, b, not_d, reg_lo default zero;
+alu_f:		.valfield 3 values ior, and, xor, pass_s, r_plus_s, r_plus_ns, nr_plus_s, pass_r default ior;	// f2 selects logic/add, f1 and f0 flip r/s
+alu_cin:	.valfield 1 values f1_or_f0, reg_df default f1_or_f0;	// f1_or_f1 will generate 0 for add, and 1 for subtract
  
 // Bus control signals 
-sc:			.valfield 2 values sc_fetch, sc_execute, sc_dma, sc_interrupt default sc_execute;
-tpa:		.valfield 1 values 0, 1 default 0;
-tpb:		.valfield 1 values 0, 1 default 0;
-mrd:		.valfield 1 values 0, 1 default 1;	
-mwr:		.valfield 1 values 0, 1 default 1;	
-amux:		.valfield 1 values 0, 1 default 0;	// 1 selects A15..8, 0 selects A7..0
-dataout:	.valfield 1 values 0, 1 default 1;	// must be 0 to enable B register output to data bus
- 
+sc:			.valfield 2 values 
+				sc_fetch, 
+				sc_execute, 
+				sc_dma, 
+				sc_interrupt default sc_execute;
+
+direction	.valfield 3	values	// RD	WR	OE
+				nop,			// 0	0	0	-- no operation
+				,				// 0	0	1	-- illegal (output enable without write)
+				dev2mem,		// 0	1	0	-- write from device to memory
+				cpu2mem,		// 0	1	1	-- write from cpu to memory
+				mem2any,		// 1	0	0	-- read from memory to cpu or device
+				,				// 1	0	1	-- illegal
+				,				// 1	1	0	-- illegal (read and write at the same time)
+				default nop;	// 1	1	1	-- illegal
+
+// Other bus signals tied to 8-clock cycle sequence (counter increments on falling clock)
+// tpa <= cycle1 when (clk = '1') else (not cycle2);
+// tpb <= cycle7;
+// ma <= rhi when (cycle = 1 or cycle = 2) else rlo;
+// n <= ir(3 downto 0) when (ir = "01100XXX" or ir = "01101XXX") else "000";
+// nrd <= (not direction(2)) when (cycle(2) = '1') else '1';
+// nwr <= (not direction(1)) when (cycle(1) = '1') else '1';
+// noe <= (not direction(0)) when (cycle(0) = '1') else '1';
+
+???
+
+
 //	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
 CR:			.alias 0x0D;
 LF:			.alias 0x0A;
@@ -82,13 +102,6 @@ sc_fetch:		.alias sc = sc_fetch;
 sc_execute:		.alias sc = sc_execute;
 sc_dma:			.alias sc = sc_dma;
 sc_interrupt:	.alias sc = sc_interrupt;
-tpa:		.alias tpa = 1;
-tpb:		.alias tpb = 1;
-mrd:		.alias mrd = 0;
-mwr:		.alias mwr = 0;
-addr_hi:	.alias amux = 1;
-addr_lo:	.alias amux = 0;
-oe:			.alias dataout = 0;
 y_zero:		.alias alu_f = ior, alu_r = zero, alu_s = zero; 
 y_d:		.alias alu_f = ior, alu_r = d, alu_s = zero;
 y_b:		.alias alu_f = ior, alu_r = zero, alu_s = b;
