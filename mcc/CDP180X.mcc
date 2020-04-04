@@ -90,8 +90,6 @@ direction	.valfield 3	values	// RD	WR	OE
 // nwr <= (not direction(1)) when (cycle(1) = '1') else '1';
 // noe <= (not direction(0)) when (cycle(0) = '1') else '1';
 
-???
-
 
 //	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
 CR:			.alias 0x0D;
