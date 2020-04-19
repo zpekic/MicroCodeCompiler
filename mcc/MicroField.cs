@@ -208,7 +208,7 @@ namespace mcc
 
         }
 
-        public int FindValue(string token, Dictionary<string, int> targets)
+        public int FindValue(string token, Dictionary<string, int> targets, int sourceLine)
         {
             int value, mask;
 
@@ -219,7 +219,7 @@ namespace mcc
 
             if (GetValueAndMask(token, out value, out mask, null))
             {
-                Assert(mask == 0, string.Format("Trying to assign masked value to '{0}'", Label));
+                Assert(mask == 0, string.Format("Trying to assign masked value to '{0}' (call from line {1})", Label, sourceLine.ToString()));
                 // lookup if in matching any valid range
                 foreach(ValueVector v in Values)
                 {
@@ -228,7 +228,7 @@ namespace mcc
                         return value; // it is ok, found in one of the ranges
                     }
                 }
-                Assert(true, string.Format("Value '{0}' out of accepted ranges for '{1}'", value.ToString(), Label));
+                Assert(false, string.Format("Value '{0}' out of accepted ranges for '{1}' (call from line {2})", value.ToString(), Label, sourceLine.ToString()));
             }
             else
             {
@@ -237,8 +237,8 @@ namespace mcc
                 {
                     if (v.IsTarget())
                     {
-                        Assert(targets != null && targets.Count > 0, "No valid then/else targets found");
-                        Assert(targets.ContainsKey(token), string.Format("Target '{0}' could not be found", token));
+                        Assert(targets != null && targets.Count > 0, string.Format("No valid then/else targets found (call from line {0})", sourceLine.ToString()));
+                        Assert(targets.ContainsKey(token), string.Format("Target '{0}' could not be found (call from line {1})", token, sourceLine.ToString()));
                         return targets[token];
                     }
                     else
@@ -249,10 +249,10 @@ namespace mcc
                         }
                     }
                 }
-                Assert(true, string.Format("Token '{0}' could not be resolved for '{1}'", token, Label));
+                Assert(false, string.Format("Token '{0}' could not be resolved for '{1}' (call from line {2})", token, Label, sourceLine.ToString()));
             }
 
-            Assert(true, string.Format("Invalid value for '{0}'", Label));
+            Assert(false, string.Format("Invalid value for '{0}' (call from line {1})", Label, sourceLine.ToString()));
             return DefaultValue; // this should never really be returned here 
         }
 

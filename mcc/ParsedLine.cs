@@ -62,10 +62,10 @@ namespace mcc
 
             // sanitize content for easier parsing later
             this.Content = this.Content.Replace('\t', ' ');
-            this.Content = this.Content.Replace("<", " <");
-            this.Content = this.Content.Replace("=", "= ");
-            this.Content = this.Content.Replace(",", ", ");
-            this.Content = this.Content.Replace("  ", " ");
+            //this.Content = this.Content.Replace("<", " <");
+            //this.Content = this.Content.Replace("=", "= ");
+            //this.Content = this.Content.Replace(",", ", ");
+            //this.Content = this.Content.Replace("  ", " ");
             this.Content = this.Content.TrimEnd(new char[] { ';' });
             if (!string.IsNullOrEmpty(this.Label))
             {
@@ -396,10 +396,9 @@ namespace mcc
                 sb.Append(item.ToString());
                 sb.Append(delimiter);
             }
-            string concat = sb.ToString();
-            concat.TrimEnd(delimiter);
+            string concat = sb.ToString().Trim();
 
-            return concat;
+            return concat.TrimEnd(delimiter);
         }
 
         protected string GetBinaryString(int value, int length)

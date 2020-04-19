@@ -22,11 +22,15 @@ namespace mcc
 
         public override void ParseContent()
         {
+            //if (LineNumber == 251)
+            //{
+            //    LineNumber = LineNumber;
+            //}
             base.ParseContent();
             List<string> resolved = ResolveAliases();
             if (resolved.Count > 0)
             {
-                TraceListValues(resolved, string.Format("Line {0}: resolved aliases: ", LineNumber.ToString()));
+                TraceListValues(resolved, string.Format("Line {0}: resolved aliases: ", LineNumber.ToString()), false);
                 logger.WriteLine(GetParsedLineString());
                 logger.WriteLine(string.Empty);
             }
@@ -48,7 +52,7 @@ namespace mcc
                 else
                 {
                     string[] nameValuePair = statements[i].Split('=');
-                    Assert(nameValuePair.Length == 2, "Malformed statement found (could be missing comma or semicolon instead of a comma)");
+                    Assert(nameValuePair.Length == 2, $"Statement '{statements[i]}' not recognized (unresolved alias or comma/semicolon confusion)");
                     if (nameValuePair[0].EndsWith("<"))
                     {
                         name = nameValuePair[0].TrimEnd(new char[] { '<' }).Trim();
@@ -76,19 +80,19 @@ namespace mcc
             {
                 if (mf is mcc.FieldIf)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_if, null), mf.Width));
+                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_if, null, LineNumber), mf.Width));
                     uiBuilder.Append("_");
                     continue;
                 }
                 if (mf is mcc.FieldThen)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_then, labelOrg), mf.Width));
+                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_then, labelOrg, LineNumber), mf.Width));
                     uiBuilder.Append("_");
                     continue;
                 }
                 if (mf is mcc.FieldElse)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_else, labelOrg), mf.Width));
+                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_else, labelOrg, LineNumber), mf.Width));
                     uiBuilder.Append("_");
                     continue;
                 }
@@ -100,7 +104,8 @@ namespace mcc
                         reg = registers[mf.Label];
                         registers.Remove(mf.Label); // means we used it
                     }
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(reg, null), mf.Width));
+                    // TODO: replace FindValue() with EvaluateExpression()
+                    uiBuilder.Append(GetBinaryString(mf.FindValue(reg, labelOrg, LineNumber), mf.Width));
                     uiBuilder.Append("_");
                     continue;
                 }
@@ -112,7 +117,8 @@ namespace mcc
                         val = values[mf.Label];
                         values.Remove(mf.Label); // means we used it
                     }
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(val, null), mf.Width));
+                    // TODO: replace FindValue() with EvaluateExpression()
+                    uiBuilder.Append(GetBinaryString(mf.FindValue(val, labelOrg, LineNumber), mf.Width));
                     uiBuilder.Append("_");
                     continue;
                 }
@@ -121,17 +127,26 @@ namespace mcc
             // remove last underscore
             uiBuilder.Remove(uiBuilder.Length - 1, 1);
 
-            TraceListValues(registers.Values.ToList<string>(), string.Format("Warning in line {0}: found unmatched <= assignments: ", LineNumber.ToString()));
-            TraceListValues(values.Values.ToList<string>(), string.Format("Warning in line {0}: found unmatched = assignments: ", LineNumber.ToString()));
+            TraceListValues(registers.Keys.ToList<string>(), "Found unmatched <= assignments: ", true);
+            TraceListValues(values.Keys.ToList<string>(), "Found unmatched = assignments: ", true);
 
             memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), false, "code");
         }
 
-        private void TraceListValues(List<string> list, string warning)
+        private void TraceListValues(List<string> list, string warning, bool fatal)
         {
             if (list != null && list.Count > 0)
             {
-                logger.WriteLine($"{warning} {GetConcatenatedList(list, new char[] { ',', ' '})}");
+                string warningWithList = $"{warning} {GetConcatenatedList(list, new char[] { ',', ' ' })}";
+
+                if (fatal)
+                {
+                    Assert(false, warningWithList);
+                }
+                else
+                {
+                    logger.WriteLine(warningWithList);
+                }
             }
         }
 

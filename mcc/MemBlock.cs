@@ -83,6 +83,7 @@ namespace mcc
                 int startRange = 0;
                 int endRange = -1;
                 StringBuilder sbUninit = new StringBuilder($"Warning in line {LineNumber.ToString()}: found {emptyLocationCount.ToString()} uninitialized locations:");
+                sbUninit.AppendLine();
                 for (int address = 0; address < capacity; address++)
                 {
                     if (memory.ContainsKey(address))
