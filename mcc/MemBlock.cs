@@ -76,6 +76,7 @@ namespace mcc
         {
             int count = 0;
             int capacity = 2 << (this.addressWidth - 1);
+            StringBuilder sbVhdUninit = new StringBuilder();
 
             int emptyLocationCount = capacity - memory.Count;
             if (emptyLocationCount > 0)
@@ -91,6 +92,7 @@ namespace mcc
                         if (endRange >= startRange)
                         {
                             sbUninit.AppendLine($"{startRange:X4} .. {endRange:X4}");
+                            sbVhdUninit.AppendLine($"-- {startRange:X4} .. {endRange:X4}");
                         }
                         startRange = address + 1;
                     }
@@ -103,6 +105,7 @@ namespace mcc
                 if (endRange >= startRange)
                 {
                     sbUninit.AppendLine($"{startRange:X4} .. {endRange:X4}");
+                    sbVhdUninit.AppendLine($"-- {startRange:X4} .. {endRange:X4}");
                 }
 
                 logger.WriteLine(sbUninit.ToString());
@@ -115,7 +118,7 @@ namespace mcc
                 switch (outputFileInfo.Extension.ToLowerInvariant())
                 {
                     case ".vhd":
-                        count += GenerateVhdFile(outputFileInfo, fields);
+                        count += GenerateVhdFile(outputFileInfo, fields, sbVhdUninit.ToString());
                         break;
                     case ".hex":
                         count += GenerateHexFile(outputFileInfo);
@@ -134,50 +137,66 @@ namespace mcc
             return count;
         }
 
-        protected string GetVhdMemory(int capacity)
+        protected string GetVhdMemory(int capacity, string defaultMicroinstruction, string otherRanges)
         {
-            bool generateOthers = false;
+            int generateOthers = 0;
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine();
+            bool isFirst = true;
+
             for (int address = 0; address < capacity; address++)
             {
                 if (memory.ContainsKey(address))
                 {
+                    if (isFirst)
+                    {
+                        isFirst = false;
+                        sb.AppendLine();
+                    }
+                    else
+                    {
+                        sb.AppendLine(",");
+                    }
+                    sb.AppendLine();
                     if (!string.IsNullOrEmpty(memory[address].Comment))
                     {
                         sb.Append("-- ");
                         sb.AppendLine(memory[address].Comment);
                     }
                     sb.Append($"{address} => ");
-
-                    string[] chunks = memory[address].Data.Split('_');
-                    for (int i = 0; i < chunks.Length; i++)
-                    {
-                        sb.Append(GetVhdConstantFromBinaryString(chunks[i]));
-                        if ((chunks.Length - i) > 1)
-                        {
-                            sb.Append(" & ");
-                        }
-                        else
-                        {
-                            sb.AppendLine(",");
-                        }
-                    }
-                    sb.AppendLine();
+                    sb.Append(GetVhdDataFromBinaryString(memory[address].Data));
                 }
                 else
                 {
                     // at least one uninitialize location found!
-                    generateOthers = true;
+                    generateOthers++;
                 }
             }
-            if (generateOthers)
+            if (generateOthers > 0)
             {
-                sb.AppendLine("others => null");
+                sb.AppendLine(",");
+                sb.AppendLine();
+                sb.AppendLine($"-- {generateOthers} location(s) in following ranges will be filled with default value");
+                sb.AppendLine(otherRanges);
+                sb.Append("others => ");
+                sb.AppendLine(GetVhdDataFromBinaryString(defaultMicroinstruction));
             }
-            else
+
+            return sb.ToString();
+        }
+
+        protected string GetVhdDataFromBinaryString(string binString)
+        {
+            Assert(!string.IsNullOrEmpty(binString), "Microinstruction data not defined");
+
+            StringBuilder sb = new StringBuilder();
+            string[] chunks = binString.Split('_');
+            for (int i = 0; i < chunks.Length; i++)
             {
-                sb.Remove(sb.Length - 1, 1);
+                sb.Append(GetVhdConstantFromBinaryString(chunks[i]));
+                if ((chunks.Length - i) > 1)
+                {
+                    sb.Append(" & ");
+                }
             }
 
             return sb.ToString();
@@ -417,6 +436,8 @@ namespace mcc
                 sb.AppendLine();
                 sb.AppendLine("package [NAME] is");
                 sb.AppendLine();
+                sb.AppendLine("[SIZES]");
+                sb.AppendLine();
                 sb.AppendLine("[TYPE]");
                 sb.AppendLine();
                 sb.AppendLine("[SIGNAL]");
@@ -431,7 +452,22 @@ namespace mcc
             }
         }
 
-        protected virtual int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields)
+        protected string GetVhdlSizes(string prefix, FieldIf fif)
+        {
+            StringBuilder sbSizes = new StringBuilder();
+
+            sbSizes.AppendLine("-- memory block size");
+            sbSizes.AppendLine($"constant {prefix}_DATA_WIDTH: \tpositive := {this.dataWidth};");
+            sbSizes.AppendLine($"constant {prefix}_ADDRESS_WIDTH: \tpositive := {this.addressWidth};");
+            sbSizes.AppendLine($"constant {prefix}_ADDRESS_LAST: \tpositive := {((1 << this.addressWidth) - 1)};");
+            if (fif != null)
+            {
+                sbSizes.AppendLine($"constant {prefix}_IF_WIDTH: \tpositive := {fif.Width};");
+            }
+            return sbSizes.ToString();
+        }
+
+        protected virtual int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
         {
             // the real implementation is in derived classes as the generate VHD varies 
             return 0;

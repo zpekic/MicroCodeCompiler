@@ -420,16 +420,21 @@ namespace mcc
             Assert(!string.IsNullOrEmpty(binary), "Constant length must be > 0");
             if ((binary.Length % 4) == 0)
             {
-                return $"X\"{GetHexFromBinary(binary, binary.Length)}\"";
+                return $"X\"{GetHexFromBinary(binary, binary.Length)}\"";   // hex is the most compact
+            }
+
+            if ((binary.Length % 3) == 0)
+            {
+                return $"O\"{GetOctFromBinary(binary, binary.Length)}\"";   // octal is the most compact
             }
 
             if (binary.Length == 1)
             {
-                return $"'{binary}'";
+                return $"'{binary}'";   // single binary digit
             }
             else
             {
-                return $"\"{binary}\"";
+                return $"\"{binary}\""; // other length binary digits
             }
         }
 
@@ -481,6 +486,48 @@ namespace mcc
                 hexBuilder.Append(Bin2Hex[binaryNibble]);
             }
             return hexBuilder.ToString();
+        }
+
+        protected string GetOctFromBinary(string binaryData, int dataWidth)
+        {
+            string octet;
+
+            StringBuilder octBuilder = new StringBuilder();
+            for (int i = 0; i < (dataWidth / 3); i++)
+            {
+                octet = binaryData.Substring(3 * i, 3);
+                switch (octet)
+                {
+                    case "000":
+                        octBuilder.Append("0");
+                        break;
+                    case "001":
+                        octBuilder.Append("1");
+                        break;
+                    case "010":
+                        octBuilder.Append("2");
+                        break;
+                    case "011":
+                        octBuilder.Append("3");
+                        break;
+                    case "100":
+                        octBuilder.Append("4");
+                        break;
+                    case "101":
+                        octBuilder.Append("5");
+                        break;
+                    case "110":
+                        octBuilder.Append("6");
+                        break;
+                    case "111":
+                        octBuilder.Append("7");
+                        break;
+                    default:
+                        Assert(false, $"Invalid octet '{octet}' detected");
+                        break;
+                }
+            }
+            return octBuilder.ToString();
         }
 
         protected void Assert(bool condition, string exceptionMessage)

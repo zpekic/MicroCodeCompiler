@@ -55,7 +55,7 @@ namespace mcc
                 return string.Equals(Name, token, StringComparison.InvariantCultureIgnoreCase);
             }
 
-            public string GetVhdLine(MicroField current)
+            public string GetVhdLine(MicroField current, bool isIfField)
             {
                 if (IsTarget())
                 {
@@ -68,26 +68,61 @@ namespace mcc
 
                     if (string.IsNullOrEmpty(Name))
                     {
-                        return $"-- Values from {fromVhd} to {toVhd} allowed";
+                        if (fromVhd.Equals(toVhd, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            return $"-- Value {fromVhd} allowed";
+                        }
+                        else
+                        {
+                            return $"-- Values from {fromVhd} to {toVhd} allowed";
+                        }
                     }
                     else
                     {
+                        bool allowed = char.IsLetter(Name[0]);
+
                         if (From == To)
                         {
                             if (current.Hi == current.Lo)
                             {
-                                // constant sam_nop : std_logic := '0';
-                                return $"constant {current.Label}_{Name}: \tstd_logic := {toVhd};";
+                                if (allowed)
+                                {
+                                    return $"constant {current.Label}_{Name}: \tstd_logic := {toVhd};";
+                                }
+                                else
+                                {
+                                    return $"-- Value {fromVhd} not allowed (name '{Name}' is not assignable)";
+                                }
                             }
                             else
                             {
-                                // constant color8_black : std_logic_vector(7 downto 0) := "00000000"; 
-                                return $"constant {current.Label}_{Name}: \tstd_logic_vector({current.Hi - current.Lo} downto 0) := {toVhd};";
+                                if (isIfField)
+                                {
+                                    return $"constant {current.Label}_{Name}: \tinteger := {this.To};";
+                                }
+                                else
+                                {
+                                    if (allowed)
+                                    {
+                                        return $"constant {current.Label}_{Name}: \tstd_logic_vector({current.Hi - current.Lo} downto 0) := {toVhd};";
+                                    }
+                                    else
+                                    {
+                                        return $"-- Value {toVhd} not allowed (name '{Name}' is not assignable)";
+                                    }
+                                }
                             }
                         }
                         else
                         {
-                            return $"-- Values from {fromVhd} to {toVhd} allowed (check source, ranges are unexpected for named values)";
+                            if (allowed)
+                            {
+                                return $"-- Values from {fromVhd} to {toVhd} allowed (check source, ranges are unexpected for named values)";
+                            }
+                            else
+                            {
+                                return $"-- Values {fromVhd} to {toVhd} not allowed (name '{Name}' is not assignable)";
+                            }
                         }
                     }
                 }
@@ -219,12 +254,17 @@ namespace mcc
 
             if (GetValueAndMask(token, out value, out mask, null))
             {
-                Assert(mask == 0, string.Format("Trying to assign masked value to '{0}' (call from line {1})", Label, sourceLine.ToString()));
+                Assert(mask == 0, $"Trying to assign masked value to '{Label}' (call from line {sourceLine})");
                 // lookup if in matching any valid range
                 foreach(ValueVector v in Values)
                 {
                     if (v.Match(value))
                     {
+                        if (!string.IsNullOrEmpty(v.Name))
+                        {
+                            Assert(v.Name[0] != '-', $"Value '{value}' is forbidden to be assigned (call from line {sourceLine})");
+                            Assert(char.IsLetter(v.Name[0]), $"Token '{v.Name}' should start with a letter (call from line {sourceLine})");
+                        }
                         return value; // it is ok, found in one of the ranges
                     }
                 }
@@ -245,6 +285,11 @@ namespace mcc
                     {
                         if (v.Match(token))
                         {
+                            if (!string.IsNullOrEmpty(v.Name))
+                            {
+                                Assert(v.Name[0] != '-', $"Value '{value}' is forbidden to be assigned (call from line {sourceLine})");
+                                Assert(char.IsLetter(v.Name[0]), $"Token '{v.Name}' should start with a letter");
+                            }
                             return v.From; // it is ok, found in the lookup table
                         }
                     }

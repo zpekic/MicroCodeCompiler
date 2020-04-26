@@ -7,13 +7,14 @@
 
 direction	.valfield 3	values	// RD	WR	OE
 				nop,			// 0	0	0	-- no operation
-				,				// 0	0	1	-- illegal (output enable without write)
+				-,				// 0	0	1	-- illegal (output enable without write)
 				dev2any,		// 0	1	0	-- write from device to memory and cpu
 				cpu2mem,		// 0	1	1	-- write from cpu to memory
 				mem2any,		// 1	0	0	-- read from memory to cpu or device
-				,				// 1	0	1	-- illegal
-				,				// 1	1	0	-- illegal (read and write at the same time)
-				default nop;	// 1	1	1	-- illegal
+				-,				// 1	0	1	-- illegal
+				-,				// 1	1	0	-- illegal (read and write at the same time)
+				-				// 1	1	1	-- illegal
+				default nop;
 
 reg_sample	.regfield 1 values same, sample default same; // sample captures EF, DMA_IN, DMA_OUT, INT
 
@@ -26,9 +27,9 @@ seq_cond:		.if 4 values
 				cond_5,			// not used
 				continue,		// not (DMA_IN or DMA_OUT or INT)
 				continue_sw,	// same as above, but also signal to use switch mux in else clause
-				cond_8,			// not used
-				externalInt,	// for BXI
-				counterInt,		// for BCI
+				cond_df,		// df (for tracing only)
+				externalInt,	// for BXI (force false in 1802 mode)
+				counterInt,		// for BCI (force false in 1802 mode)
 				alu16_zero,		// 16-bit ALU output (used in DBNZ only)
 				cond_CX,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
 				traceEnabled,	// high to trace each instruction
@@ -40,10 +41,10 @@ seq_else:	.else 8 values next, repeat, return, fork, 0x00..0xFF, @ default next;
 			
 // registers documented to be present in the original 180X
 reg_d:		.regfield 3 values same, alu_y, shift_dn_df, shift_dn_0 default same;	// 8 bit accumulator
-reg_df:		.regfield 2 values same, d_msb, d_lsb, alu_cout default same;		// 1 bit data overflow (== carry) bit
-reg_t:		.regfield 2 values same, alu_y, xp, flags default same;		// 8 bit temporary register
-reg_b:		.regfield 2 values same, alu_y, t, df_d_dn default same;			// 8 bit aux data register
-reg_x:		.regfield 2 values same, n, alu_yhi, p default same;	// 4 bit index register pointer (hi nibble if together with P)
+reg_df:		.regfield 2 values same, d_msb, d_lsb, alu_cout default same;			// 1 bit data overflow (== carry) bit
+reg_t:		.regfield 2 values same, alu_y, xp, in default same;		// 8 bit temporary register
+reg_b:		.regfield 2 values same, alu_y, t, df_d_dn default same;	// 8 bit aux data register
+reg_x:		.regfield 2 values same, n, alu_yhi, p default same;		// 4 bit index register pointer (hi nibble if together with P)
 reg_p:		.regfield 2 values same, n,	alu_ylo, default same;			// 4 bit program counter pointer (lo nibble if together with X)
 reg_in:		.regfield 1 values same, alu_y default same;				// 8 bit instruction register
 reg_q:		.regfield 2 values same, zero, one default same;			// 1 bit output flip-flop
@@ -202,7 +203,7 @@ dma_in:		sc_dma, direction = dev2any, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DE
 			if continue then fetch else dma_or_int;
 
 //	Output internal state in following format:
-//	D=?? B=?? FL=?? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
+//	D=?? B=?? DF=? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
 //	trace mux selection is:
 //	0XXXXXXX ... 7 bit ASCII character in XXXXXXX
 //	1XXXXXX0 ... T register, low nibble
@@ -214,17 +215,20 @@ traceState:	y_d, reg_t <= alu_y, trace 'D';
 			y_b, reg_t <= alu_y, trace 'B';
 			gosub traceET;
 
-			reg_t <= flags, trace 'F';
-			trace 'L';
-			gosub traceET;
+			trace 'D';
+			trace 'F';
+			if cond_df then trace1 else next;
+			trace '0';
+			goto traceX; 
+trace1:		trace '1';
 			
-			reg_t <= xp, trace 'X';
+traceX:		reg_t <= xp, trace 'X';
 			trace 'P';
 			gosub traceET;
 
-//			reg_t <= in, trace 'I';
-//			trace 'N';
-//			gosub traceET;
+			reg_t <= in, trace 'I';
+			trace 'N';
+			gosub traceET;
 
 			trace 'R';
 			trace '0';

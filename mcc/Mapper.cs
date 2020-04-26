@@ -15,7 +15,7 @@ namespace mcc
             this.Width = -1;
         }
 
-        protected override int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields)
+        protected override int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
         {
             Assert(fields == null, "Unexpected data passed in");
             logger.Write($"Generating mapper '{outputFileInfo.FullName}' ...");
@@ -27,10 +27,11 @@ namespace mcc
                 logger.PrintBanner(vhdFile);
                 template = template.Replace("[NAME]", outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf(".")));
                 template = template.Replace("[FIELDS]", string.Empty);
+                template = template.Replace("[SIZES]", GetVhdlSizes("MAPPER", null));
                 template = template.Replace("[TYPE]", $"type mapper_memory is array(0 to {capacity - 1}) of std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[SIGNAL]", $"signal instructionstart: std_logic_vector({dataWidth - 1} downto 0);");
-                template = template.Replace("[MEMORY]", $"constant mapper: mapper_memory := ({GetVhdMemory(capacity)});");
-                template = template.Replace("[PLACEHOLDERS]", " [NAME], [TYPE], [SIGNAL], [MEMORY]");
+                template = template.Replace("[MEMORY]", $"constant mapper: mapper_memory := ({GetVhdMemory(capacity, null, otherRanges)});");
+                template = template.Replace("[PLACEHOLDERS]", " [SIZES], [NAME], [TYPE], [SIGNAL], [MEMORY]");
                 vhdFile.WriteLine(template);
             }
 
