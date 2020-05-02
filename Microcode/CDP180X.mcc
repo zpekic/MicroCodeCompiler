@@ -21,7 +21,7 @@ reg_sample	.regfield 1 values same, sample default same; // sample captures EF, 
 seq_cond:		.if 4 values 
 				true, 			// hard-code to 1
 				mode_1805, 		// external signal enabling 1805/1806 instructions
-				cond_2,			// not used
+				TPB,			// to sync with regular machine cycle when exiting tracing routine
 				cond_3X,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
 				cond_4,			// not used
 				cond_5,			// not used
@@ -109,6 +109,7 @@ ct_oper:	.valfield 1 values disable, enable default disable; // enable counter/t
 CR:			.alias 0x0D;
 LF:			.alias 0x0A;
 trace:		.alias reg_trace <= ss_disable_char, if true then traceChar else;
+dispatch:	.alias if TPB then fork else repeat;
 
 sc_fetch:		.alias sc = sc_fetch;
 sc_execute:		.alias sc = sc_execute;
@@ -132,7 +133,6 @@ reg_clr:	.alias alu16_f = clear,		reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;
 goto:		.alias if false then next else;
 gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
 return:		.alias if false then next else return;
-dispatch:	.alias if false then next else fork;
 sample:		.alias reg_sample <= sample;
 noop:		.alias if true then next else next;
 
@@ -217,10 +217,13 @@ traceState:	y_d, reg_t <= alu_y, trace 'D';
 
 			trace 'D';
 			trace 'F';
+			trace '=';
 			if cond_df then trace1 else next;
 			trace '0';
+			trace ' ';
 			goto traceX; 
 trace1:		trace '1';
+			trace ' ';
 			
 traceX:		reg_t <= xp, trace 'X';
 			trace 'P';
@@ -263,32 +266,38 @@ traceX:		reg_t <= xp, trace 'X';
 traceReg0:	y_hi, sel_reg = zero, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = zero, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = zero, reg_t <= alu_y, gosub traceT; 
+			return;
 
 traceReg1:	y_hi, sel_reg = one, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = one, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = one, reg_t <= alu_y, gosub traceT; 
+			return;
 
 traceReg2:	y_hi, sel_reg = two, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = two, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = two, reg_t <= alu_y, gosub traceT; 
+			return;
 
 traceRegX:	y_hi, sel_reg = x, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = x, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = x, reg_t <= alu_y, gosub traceT; 
+			return;
 
 traceRegP:	y_hi, sel_reg = p, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = p, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = p, reg_t <= alu_y, gosub traceT; 
+			return;
 
 traceRegN:	y_hi, sel_reg = n, reg_t <= alu_y, trace '=';
 			trace 0b10000_001;
 			trace 0b10000_000;
-			y_lo, sel_reg = n, reg_t <= alu_y, goto traceT; 
+			y_lo, sel_reg = n, reg_t <= alu_y, gosub traceT;
+			return;
 
 traceET:	trace '=';
 traceT:		trace 0b10000_001;
@@ -438,19 +447,19 @@ SMBI:		sc_execute, direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_
 			goto SMB;
 
 			.map 0b0_1000_????;	//  D <= R(N).0
-GLO:		reg_d <= alu_y, y_lo,
+GLO:		reg_d <= alu_y, y_lo, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1001_????;	//  D <= R(N).1
-GHI:		reg_d <= alu_y, y_hi,
+GHI:		reg_d <= alu_y, y_hi, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1010_????;	// R(N).0 <= D
-PLO:		reg_lo <= alu_y, y_d,
+PLO:		reg_lo <= alu_y, y_d, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1011_????;	// R(N).1 <= D
-PHI:		reg_hi <= alu_y, y_d,
+PHI:		reg_hi <= alu_y, y_d, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1100_????;	// 3 byte branch instructions
