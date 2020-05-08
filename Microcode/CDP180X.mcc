@@ -5,23 +5,30 @@
 			.code 8, 64, cdp180x_code.mif, cdp180x_code.cgf, cdp180x_code.vhd, cdp180x_code.hex, 8;
 			.mapper 9, 8, cdp180x_map.mif, cdp180x_map.cgf, cdp180x_map.vhd, cdp180x_map.hex, 1;
 
-direction	.valfield 3	values	// RD	WR	OE
-				nop,			// 0	0	0	-- no operation
-				-,				// 0	0	1	-- illegal (output enable without write)
-				dev2any,		// 0	1	0	-- write from device to memory and cpu
-				cpu2mem,		// 0	1	1	-- write from cpu to memory
-				mem2any,		// 1	0	0	-- read from memory to cpu or device
-				-,				// 1	0	1	-- illegal
-				-,				// 1	1	0	-- illegal (read and write at the same time)
-				-				// 1	1	1	-- illegal
-				default nop;
 
-reg_sample	.regfield 1 values same, sample default same; // sample captures EF, DMA_IN, DMA_OUT, INT
+bus_state	.valfield 4 values	// SC1	SC0	RD	WR	OE	NE
+				exec_nop,		//	0	1	0	0	0	0	
+				exec_memread,	//	0	1	1	0	0	0
+				exec_memwrite,	//	0	1	0	1	1	0
+				exec_ioread,	//	0	1	0	1	0	1
+				exec_iowrite,	//	0	1	1	0	0	1
+				dma_memread,	//	1	0	0	0	0	0
+				dma_memwrite,	//	1	0	0	0	0	0
+				int_nop,		//	1	1	0	0	0	0
+				fetch_memread,	//	0	0	1	0	0	0
+				-,
+				-,
+				-,
+				-,
+				-,
+				-,
+				-
+				default exec_nop;
 
 seq_cond:		.if 4 values 
 				true, 			// hard-code to 1
 				mode_1805, 		// external signal enabling 1805/1806 instructions
-				TPB,			// to sync with regular machine cycle when exiting tracing routine
+				sync,			// to sync with regular machine cycle when exiting tracing routine
 				cond_3X,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
 				cond_4,			// not used
 				cond_5,			// not used
@@ -59,15 +66,9 @@ reg_trace:	.regfield 2 values same, 				// reg_trace <= reg_trace
 								
 reg_extend:	.regfield 2 values same, zero, one default same;			// 1 bit instruction register extension
 
-//	controls the 16 * 16 register file, as 2 halves of 16 * 8 (lo and hi)
-//	in first cycle reg_addr needs to be set, and in next one reg_lo and reg_hi act as two independent 8 bit regs
-reg_lo:		.regfield 1 values alu16_ylo, alu_y default alu16_ylo;			// note that alu16_ylo and alu16_f defaults mean no change
-reg_hi:		.regfield 1 values alu16_yhi, alu_y default alu16_yhi;			// note that alu16_yhi and alu16_f defaults mean no change
+// 16 * 16 register file
 sel_reg:	.valfield 3	values zero, one, two, x, n, p default zero;		// select source of R0-R15 address
-
-// 16-bit ALU to operate on 16*16 register file
-// connect them cleverly to 16-bit adder, one one side "and" and other is 0x0000 or 0xFFFF
-alu16_f:	.valfield 2 values nop, clear, plus_one, minus_one default nop;	
+reg_r		.regfield 3 values same, zero, r_plus_one, r_minus_one, yhi_rlo, rhi_ylo, b_t, -  default same;
 
 // 8-bit ALU for arithmetic and logical operations
 // the binary / decimal mode comes directly from instruction bit 8 (reg_extend) as 68XX arithmetic instructions are all decimal
@@ -85,14 +86,9 @@ alu_s:		.valfield 2 values bus,	 d, const, reg_lo default bus;	// const comes fr
 alu_f:		.valfield 3 values xor, and, ior, pass_r, r_plus_s, r_plus_ns, nr_plus_s, pass_s default xor;	// f2 selects logic/add, f1 and f0 flip r/s
 alu_cin:	.valfield 1 values f1_or_f0, df default f1_or_f0;	// f1_or_f1 will generate 0 for add, and 1 for subtract
  
-// Bus control signals 
-sc:			.valfield 2 values 
-				sc_fetch, 
-				sc_execute, 
-				sc_dma, 
-				sc_interrupt default sc_execute;
+reg_sample	.regfield 1 values same, sample default same; // sample captures EF, DMA_IN, DMA_OUT, INT
 
-ct_oper:	.valfield 1 values disable, enable default disable; // enable counter/timer operations 
+ct_oper:	.valfield 3 values disable, enable default disable; // enable counter/timer operations 
 
 // Other bus signals tied to 8-clock cycle sequence (counter increments on falling clock)
 // tpa <= cycle1 when (clk = '1') else (not cycle2); 
@@ -109,12 +105,17 @@ ct_oper:	.valfield 1 values disable, enable default disable; // enable counter/t
 CR:			.alias 0x0D;
 LF:			.alias 0x0A;
 trace:		.alias reg_trace <= ss_disable_char, if true then traceChar else;
-dispatch:	.alias if TPB then fork else repeat;
+dispatch:	.alias if sync then fork else repeat;
 
-sc_fetch:		.alias sc = sc_fetch;
-sc_execute:		.alias sc = sc_execute;
-sc_dma:			.alias sc = sc_dma;
-sc_interrupt:	.alias sc = sc_interrupt;
+exec_memread	.alias	bus_state = exec_memread;
+exec_memwrite	.alias	bus_state = exec_memwrite;
+exec_ioread		.alias	bus_state = exec_ioread;
+exec_iowrite	.alias	bus_state = exec_iowrite;
+dma_memread		.alias	bus_state = dma_memread;
+dma_memwrite	.alias	bus_state = dma_memwrite;
+int_nop			.alias	bus_state = int_nop;
+fetch_memread	.alias	bus_state = fetch_memread;
+
 y_zero:		.alias alu_f = xor, alu_r = d, alu_s = d; 
 y_d:		.alias alu_f = pass_r, alu_r = d;
 y_b:		.alias alu_f = pass_r, alu_r = b;
@@ -127,9 +128,9 @@ y_d_plus_d	.alias alu_f = r_plus_s, alu_r = d, alu_s = d;
 y_d_plus_b	.alias alu_f = r_plus_s, alu_r = b, alu_s = d;
 y_d_minus_b	.alias alu_f = nr_plus_s, alu_r = b, alu_s = d;
 y_b_minus_d	.alias alu_f = r_plus_ns, alu_r = b, alu_s = d;
-reg_inc:	.alias alu16_f = plus_one,	reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
-reg_dec:	.alias alu16_f = minus_one,	reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
-reg_clr:	.alias alu16_f = clear,		reg_hi <= alu16_yhi, reg_lo <= alu16_ylo;	
+reg_inc:	.alias reg_r <= r_plus_one;	
+reg_dec:	.alias reg_r <= r_minus_one;	
+reg_clr:	.alias reg_r <= zero;	
 goto:		.alias if false then next else;
 gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
 return:		.alias if false then next else return;
@@ -155,11 +156,11 @@ _reset3:	reg_clr, sel_reg = zero,							// R(0) = 0;
 
 //	Read memory into instruction register
 //	---------------------------------------------------------------------------
-fetch:		sc_fetch, direction = mem2any, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc;
+fetch:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc;
 
 //	Given that instruction register is loaded late, execute 1 more cycle before forking. It is useful to load B <= M(X)
 // ----------------------------------------------------------------------------
-load_b:		direction = mem2any, sel_reg = x, reg_b <= alu_y, y_bus,
+load_b:		exec_memread, sel_reg = x, reg_b <= alu_y, y_bus,
 			if traceEnabled then traceState else fork;	
 
 //	Respond to DMA or INT requests (using simple switch mechanism)
@@ -169,37 +170,37 @@ load_b:		direction = mem2any, sel_reg = x, reg_b <= alu_y, y_bus,
 dma_or_int: sample, if continue_sw then fetch else dma_or_int;	// else mux is else(7 downto 3) & dma_in & dma_out & int & '1' 
 
 			.org 0b0001_0001;	// no special cycle needed, start a new fetch
-fetch1:		sc_fetch, direction = mem2any, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc,
+fetch1:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc,
 			goto load_b;
 
 			.org 0b0001_0011;	// INT
-int_ack:	sc_interrupt, 
+int_ack:	int_nop, 
 			y_const, reg_t <= xp, reg_x <= alu_yhi, reg_p <= alu_ylo, // T <= XP, X <= 2, P <= 1
 			reg_mie <= disable, 
 			if true then fetch else 0x21;
 
 			.org 0b0001_0101;	// DMA_OUT
-dma_out:	sc_dma, direction = mem2any, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
+dma_out:	dma_memread, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 			.org 0b0001_0111;	// DMA_OUT, INT ignored
-			sc_dma, direction = mem2any, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
+			dma_memread, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 			.org 0b0001_1001;	// DMA_IN
-dma_in:		sc_dma, direction = dev2any, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+dma_in:		dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 			.org 0b0001_1011;	// DMA_IN, INT ignored
-			sc_dma, direction = dev2any, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 			.org 0b0001_1101;	// DMA_IN, DMA_OUT ignored
-			sc_dma, direction = dev2any, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 			.org 0b0001_1111;	// DMA_IN, DMA_OUT and INT both ignored
-			sc_dma, direction = dev2any, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
 			if continue then fetch else dma_or_int;
 
 //	Output internal state in following format:
@@ -315,7 +316,7 @@ XNOP:		goto NOP;
 //	1802 basic instructions
 //--------------------------------------------------------
 			.map 0b0_0000_????;	// D <= M(R(N))
-LDN:		direction = mem2any, sel_reg = n, y_bus, reg_d <= alu_y,
+LDN:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
 			if continue then fetch else dma_or_int;
 			
 			.map 0b0_0000_0000;	// override for LDN 0
@@ -332,25 +333,26 @@ DEC: 		sel_reg = n, reg_dec,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0011_????;	// 2 byte branch instructions
-SBRANCH:	direction = mem2any, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+SBRANCH:	exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
 			if cond_3X then sbranch2 else next;
 			
-skip1:		sel_reg = p, reg_inc,							// R(P) <= R(P) + 1 (no branch)
+			.map 0b0_0011_1000; // 2 byte SKIP - OVERRIDE!
+SKIP:		sel_reg = p, reg_inc,							// R(P) <= R(P) + 1 (no branch)
 			if continue then fetch else dma_or_int;
 			
-sbranch2:	sel_reg = p, reg_lo <= alu_y, y_b,
+sbranch2:	sel_reg = p, reg_r <= rhi_ylo, y_b,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0100_????;								// D <= M(R(N)), R(N) <= R(N) + 1
-LDA:		direction = mem2any, sel_reg = n, y_bus, reg_d <= alu_y,
+LDA:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
 			goto INC;
 
 			.map 0b0_0101_????;								// M(R(N)) <= D;
-STR:		direction = cpu2mem, sel_reg = n, y_d,		
+STR:		exec_memwrite, sel_reg = n, y_d,		
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_0???;
-OUT:		sel_reg = x, reg_inc, direction = mem2any,		// DEVICE <= M(R(X)), R(X) <= R(X) + 1
+OUT:		exec_iowrite, sel_reg = x, reg_inc,				// DEVICE <= M(R(X)), R(X) <= R(X) + 1
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_0000;	// override for OUT 0
@@ -358,13 +360,13 @@ IRX: 		sel_reg = x, reg_inc,							// R(X) <= R(X) + 1
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_1???;
-INP:		sel_reg = x, y_bus, reg_d <= alu_y, direction = dev2any, 
+INP:		exec_ioread, sel_reg = x, y_bus, reg_d <= alu_y, 
 			if continue then fetch else dma_or_int;	
 
 			.map 0b0_0110_1000;	// override for INP 0 is the linking opcode for extended instructions			
 EXTEND:		if mode_1805 then next else NOP;
 
-			sc_fetch, direction = mem2any, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_extend <= one,
+			fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_extend <= one,
 			reg_inc,
 			goto load_b;
 			
@@ -385,7 +387,7 @@ LDXA:		y_b, reg_d <= alu_y;
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_0011;
-STXD:		y_d, direction = cpu2mem;
+STXD:		exec_memwrite, y_d;
 
 			sel_reg = x, reg_dec,
 			if continue then fetch else dma_or_int;
@@ -411,13 +413,13 @@ SMB:		reg_df <= alu_cout, reg_d <= alu_y, y_d_minus_b, alu_cin = df,
 			.map 0b0_0111_1000;
 SAV:		reg_b <= alu_y, y_t;
 
-			direction = cpu2mem, sel_reg = x, y_b,		
+			exec_memwrite, sel_reg = x, y_b,		
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_1001;
 MARK:		reg_t <= xp;
 
-			reg_x <= p, direction = cpu2mem, sel_reg = two, y_t, reg_dec, 
+			exec_memwrite, reg_x <= p, sel_reg = two, y_t, reg_dec, 
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_1010;
@@ -430,11 +432,11 @@ SEQ:		reg_q <= one,
 
 			.map 0b0_0111_1100;
 			.map 0b1_0111_1100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
-ADCI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+ADCI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto ADC;
 
 			.map 0b0_0111_1101;
-SDBI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+SDBI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto SDB;
 
 			.map 0b0_0111_1110;	// DF, D <= D + D + DF
@@ -443,7 +445,7 @@ SHLC:		reg_df <= alu_cout, reg_d <= alu_y, alu_f = r_plus_s, alu_r = d, alu_s = 
 
 			.map 0b0_0111_1111;
 			.map 0b1_0111_1111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
-SMBI:		sc_execute, direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+SMBI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto SMB;
 
 			.map 0b0_1000_????;	//  D <= R(N).0
@@ -455,23 +457,36 @@ GHI:		reg_d <= alu_y, y_hi, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1010_????;	// R(N).0 <= D
-PLO:		reg_lo <= alu_y, y_d, sel_reg = n,
+PLO:		reg_r <= rhi_ylo, y_d, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1011_????;	// R(N).1 <= D
-PHI:		reg_hi <= alu_y, y_d, sel_reg = n,
+PHI:		reg_r <= yhi_rlo, y_d, sel_reg = n,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1100_????;	// 3 byte branch instructions
-LBRANCH:	direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,	// B <= M(R(P)), R(P) <= R(P) + 1
-			if cond_CX then next else skip1;
+LBRANCH:	exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,	// B <= M(R(P)), R(P) <= R(P) + 1
+			if cond_CX then next else SKIP;
 			
-			direction = mem2any, sel_reg = p, reg_lo <= alu_y, y_bus;			// R(P).0 <= M(R(P))
+			exec_memread, sel_reg = p, reg_r <= rhi_ylo, y_bus;			// R(P).0 <= M(R(P))
 
-			sel_reg = p, reg_hi <= alu_y, y_b,									// R(P).1 <= B 
+			sel_reg = p, reg_r <= yhi_rlo, y_b,							// R(P).1 <= B 
 			if continue then fetch else dma_or_int;
 
-			.map 0b0_1100_0100;	// override for 0xC4 LBRANCH
+			.map 0b0_1100_0101;	// LSNQ - OVERRIDE
+			.map 0b0_1100_0110;	// LSNZ - OVERRIDE
+			.map 0b0_1100_0111;	// LSNF - OVERRIDE
+			.map 0b0_1100_1100; // LSIE - OVERRIDE
+			.map 0b0_1100_1101; // LSQ  - OVERRIDE
+			.map 0b0_1100_1110; // LSZ  - OVERRIDE
+			.map 0b0_1100_1111; // LSDF - OVERRIDE
+LSKIP:		if cond_CX then next else NOP;
+
+			.map 0b0_1100_1000; // LSKP - OVERRIDE
+SKIP2:		sel_reg = p, reg_inc,							// R(P) <= R(P) + 1 (skip one)
+			goto SKIP;										// skip another one
+
+			.map 0b0_1100_0100;	// OVERRIDE for 0xC4 LBRANCH
 NOP:		if continue then fetch else dma_or_int;
 				
 			.map 0b0_1101_????;
@@ -517,28 +532,28 @@ SM:			reg_df <= alu_cout, reg_d <= alu_y, y_d_minus_b, alu_cin = f1_or_f0, // ci
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_1111_1000;
-LDI:		direction = mem2any, sel_reg = p, reg_d <= alu_y, y_bus, reg_inc, 
+LDI:		exec_memread, sel_reg = p, reg_d <= alu_y, y_bus, reg_inc, 
 			if continue then fetch else dma_or_int;
 			
 			.map 0b0_1111_1001;
-ORI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+ORI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto OR;
 			
 			.map 0b0_1111_1010;
-ANI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+ANI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto AND;
 			
 			.map 0b0_1111_1011;
-XRI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+XRI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto XOR;
 			
 			.map 0b0_1111_1100;
 			.map 0b1_1111_1100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
-ADI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+ADI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto ADD;
 
 			.map 0b0_1111_1101;
-SDI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+SDI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto SD;
 			
 			.map 0b0_1111_1110;
@@ -547,7 +562,7 @@ SHL:		reg_df <= alu_cout, reg_d <= alu_y, y_d_plus_d, alu_cin = f1_or_f0, // cin
 			
 			.map 0b0_1111_1111;
 			.map 0b1_1111_1111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
-SMI:		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+SMI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
 			goto SM;
 
 //--------------------------------------------------------
@@ -613,68 +628,64 @@ CID:	sel_reg = n, 	// TODO
 DBNZ:	sel_reg = n, reg_dec,
 		if alu16_zero then skip2 else next;	// zero detection is connected to the output of the incrementer/decrementer
 
-		direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;	// B <= M(R(P)), R(P) <= R(P) + 1
+		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;	// B <= M(R(P)), R(P) <= R(P) + 1
 			
-		direction = mem2any, sel_reg = p, reg_lo <= alu_y, y_bus;	// R(P).0 <= M(R(P))
+		exec_memread, sel_reg = p, reg_r <= rhi_ylo, y_bus;	// R(P).0 <= M(R(P))
 
-		sel_reg = p, reg_hi <= alu_y, y_b,							// R(P).1 <= B 
+		sel_reg = p, reg_r <= yhi_rlo, y_b,							// R(P).1 <= B 
 		if continue then fetch else dma_or_int;
 
 skip2:	sel_reg = p, reg_inc,
-		goto skip1;
+		goto SKIP;
 
 		.map 0b1_0011_1110;
-BCI:	direction = mem2any, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
-		if counterInt then sbranch2 else skip1;	// TODO: clear CI when branching?
+BCI:	exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+		if counterInt then sbranch2 else SKIP;	// TODO: clear CI when branching?
 
 		.map 0b1_0011_1111;
-BXI:	direction = mem2any, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
-		if externalInt then sbranch2 else skip1;
+BXI:	exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+		if externalInt then sbranch2 else SKIP;
 
 		.map 0b1_0110_????;
-RLXA:	direction = mem2any, sel_reg = x, reg_b <= alu_y, y_bus, reg_inc; // B <= R(X), R(X) <= R(X) + 1
+RLXA:	exec_memread, sel_reg = x, reg_b <= alu_y, y_bus, reg_inc; // B <= R(X), R(X) <= R(X) + 1
 
-		direction = mem2any, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc; // T <= R(X), R(X) <= R(X) + 1
+		exec_memread, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc; // T <= R(X), R(X) <= R(X) + 1
 
-		sel_reg = n, reg_hi <= alu_y, y_b, reg_b <= t;
+		sel_reg = n, reg_r <= yhi_rlo, y_b, reg_b <= t;					// R(N).1 <= B, B <= T
 
-		sel_reg = n, reg_lo <= alu_y, y_b, 
+		sel_reg = n, reg_r <= rhi_ylo, y_b,								// R(N).0 <= B
 		if continue then fetch else dma_or_int;
 
 		.map 0b1_0111_0110;
 DSAV:	sel_reg = x, reg_dec;
 
-		direction = cpu2mem, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
+		exec_memwrite, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
 
-		direction = cpu2mem, sel_reg = x, y_d, reg_dec, reg_b <= df_d_dn;	// M(R(X)) <= D, R(X) <= R(X) - 1, B <= DF & D(7 downto 1)
+		exec_memwrite, sel_reg = x, y_d, reg_dec, reg_b <= df_d_dn;	// M(R(X)) <= D, R(X) <= R(X) - 1, B <= DF & D(7 downto 1)
 
-		direction = cpu2mem, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1 
+		exec_memwrite, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1 
 		if continue then fetch else dma_or_int;
 		
 		.map 0b1_1000_????;	// TODO - double check logic, this may be buggy
-SCAL:	sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
+SCAL:	sel_reg = n, reg_t <= alu_y, y_lo;							// T <= R(N).0
 
-		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
+		sel_reg = n, reg_b <= alu_y, y_hi;							// B <= R(N).1
 
-		direction = cpu2mem, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
+		exec_memwrite, sel_reg = x, y_t, reg_dec;					// M(R(X)) <= T, R(X) <= R(X) - 1
 		
-		direction = cpu2mem, sel_reg = x, y_b, reg_dec;	// M(R(X)) <= B, R(X) <= R(X) - 1
+		exec_memwrite, sel_reg = x, y_b, reg_dec;					// M(R(X)) <= B, R(X) <= R(X) - 1
 
-		sel_reg = p, reg_t <= alu_y, y_lo;	// T <= R(P).0
+		sel_reg = p, reg_t <= alu_y, y_lo;							// T <= R(P).0
 
-		sel_reg = p, reg_b <= alu_y, y_hi;	// B <= R(P).1
+		sel_reg = p, reg_b <= alu_y, y_hi;							// B <= R(P).1
 
-		sel_reg = n, reg_lo <= alu_y, y_t;	// R(N).0 <= T
+		sel_reg = n, reg_r <= b_t;									// R(N) <= B:T
 
-		sel_reg = n, reg_hi <= alu_y, y_b;	// R(N).1 <= B
+		exec_memread, sel_reg = n, reg_t <= alu_y, y_bus, reg_inc;	// M(R(N)) <= T, R(N) <= R(N) + 1
 
-		direction = mem2any, sel_reg = n, reg_t <= alu_y, y_bus, reg_inc;
+		exec_memread, sel_reg = n, reg_b <= alu_y, y_bus, reg_inc;	// M(R(N)) <= B, R(N) <= R(N) + 1
 
-		direction = mem2any, sel_reg = n, reg_b <= alu_y, y_bus, reg_inc;
-
-		sel_reg = p, reg_lo <= alu_y, y_t;	// R(N).0 <= T
-
-		sel_reg = p, reg_hi <= alu_y, y_b,	// R(N).1 <= B
+		sel_reg = p, reg_r <= b_t,		// R(P) <= B:T
 		if continue then fetch else dma_or_int;
 
 		.map 0b1_1001_????;
@@ -684,13 +695,11 @@ SRET:	sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
 
 		sel_reg = x, reg_inc;				// R(X) <= R(X) + 1
 
-		sel_reg = p, reg_lo <= alu_y, y_t;	// R(P).0 <= T
+		sel_reg = p, reg_r <= b_t;			// R(P) <= B:T
 
-		sel_reg = p, reg_hi <= alu_y, y_b;	// R(P).1 <= B
-
-		direction = mem2any, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc;	// T <= M(R(X)), R(X) <= R(X) + 1
+		exec_memread, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc;	// T <= M(R(X)), R(X) <= R(X) + 1
 			
-		direction = mem2any, sel_reg = x, reg_b <= alu_y, y_bus,			// B <= M(R(X))
+		exec_memread, sel_reg = x, reg_b <= alu_y, y_bus,			// B <= M(R(X))
 		goto load_n;
 
 		.map 0b1_1010_????;
@@ -698,9 +707,9 @@ RSXD:	sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
 
 		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
 
-		direction = cpu2mem, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
+		exec_memwrite, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
 		
-		direction = cpu2mem, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1
+		exec_memwrite, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1
 		if continue then fetch else dma_or_int;
 
 		.map 0b1_1011_????;
@@ -708,18 +717,14 @@ RNX:	sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
 
 		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
 
-		sel_reg = x, reg_lo <= alu_y, y_t;	// R(X).0 <= T
-
-		sel_reg = x, reg_hi <= alu_y, y_b,	// R(X).1 <= B
+		sel_reg = x, reg_r <= b_t,			// R(X) <= B:T
 		if continue then fetch else dma_or_int;
 
 		.map 0b1_1100_????;
-RLDI:	direction = mem2any, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;
+RLDI:	exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;
 
-		direction = mem2any, sel_reg = p, reg_t <= alu_y, y_bus, reg_inc; 
+		exec_memread, sel_reg = p, reg_t <= alu_y, y_bus, reg_inc; 
 		
-load_n:	sel_reg = n, reg_lo <= alu_y, y_t;	// R(N).0 <= T
-
-		sel_reg = n, reg_hi <= alu_y, y_b,	// R(N).1 <= B
+load_n:	sel_reg = n, reg_r <= b_t,	// R(N) <= B:T
 		if continue then fetch else dma_or_int;
 

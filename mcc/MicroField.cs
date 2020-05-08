@@ -237,10 +237,9 @@ namespace mcc
                 }
             }
 
-            GetValueAndMask(defaultValue, out this.DefaultValue, out mask, null);
+            Assert(GetValueAndMask(defaultValue, out this.DefaultValue, out mask, null), $"Default value '{defaultValue}' could not be resolved");
             Assert(mask == 0, "Mask not allowed in default value");
             this.DefaultValue = CheckRange(this.DefaultValue);
-
         }
 
         public int FindValue(string token, Dictionary<string, int> targets, int sourceLine)
@@ -297,7 +296,7 @@ namespace mcc
                 Assert(false, string.Format("Token '{0}' could not be resolved for '{1}' (call from line {2})", token, Label, sourceLine.ToString()));
             }
 
-            Assert(false, string.Format("Invalid value for '{0}' (call from line {1})", Label, sourceLine.ToString()));
+            Assert(true, string.Format("Invalid value for '{0}' (call from line {1})", Label, sourceLine.ToString()));
             return DefaultValue; // this should never really be returned here 
         }
 
