@@ -34,7 +34,7 @@ seq_cond:		.if 4 values
 				cond_5,			// not used
 				continue,		// not (DMA_IN or DMA_OUT or INT)
 				continue_sw,	// same as above, but also signal to use switch mux in else clause
-				cond_df,		// df (for tracing only)
+				cond_8,			// not used
 				externalInt,	// for BXI (force false in 1802 mode)
 				counterInt,		// for BCI (force false in 1802 mode)
 				alu16_zero,		// 16-bit ALU output (used in DBNZ only)
@@ -204,58 +204,60 @@ dma_in:		dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R
 			if continue then fetch else dma_or_int;
 
 //	Output internal state in following format:
-//	D=?? B=?? DF=? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
+//	D=?? B=?? FL=?? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
 //	trace mux selection is:
 //	0XXXXXXX ... 7 bit ASCII character in XXXXXXX
-//	1XXXXXX0 ... T register, low nibble
-//	1XXXXXX1 ... T register, high nibble
+//	1XXXRRR0 ... internal register, low nibble
+//	1XXXRRR1 ... internal register, high nibble
 //	-----------------------------------------------------------------------------
-traceState:	y_d, reg_t <= alu_y, trace 'D';
-			gosub traceET;
-
-			y_b, reg_t <= alu_y, trace 'B';
-			gosub traceET;
-
-			trace 'D';
-			trace 'F';
+traceState:	trace 'D';
 			trace '=';
-			if cond_df then trace1 else next;
-			trace '0';
+			trace 0b1000_0111;
+			trace 0b1000_0110;
 			trace ' ';
-			goto traceX; 
-trace1:		trace '1';
+
+			trace 'B';
+			trace '=';
+			trace 0b1000_0101;
+			trace 0b1000_0100;
+			trace ' ';
+
+			trace 'F';
+			trace 'L';
+			trace '=';
+			trace 0b1000_0011;
+			trace 0b1000_0010;
 			trace ' ';
 			
-traceX:		reg_t <= xp, trace 'X';
+			trace 'X';
 			trace 'P';
-			gosub traceET;
+			trace '=';
+			trace 0b1000_1111;
+			trace 0b1000_1110;
+			trace ' ';
 
-			reg_t <= in, trace 'I';
+			trace 'I';
 			trace 'N';
-			gosub traceET;
+			trace '=';
+			trace 0b1000_1001;
+			trace 0b1000_1000;
 
-			trace 'R';
-			trace '0';
+			gosub traceSpR;
 			gosub traceReg0;
 			
-			trace 'R';
-			trace '1';
+			gosub traceSpR;
 			gosub traceReg1;
 			
-			trace 'R';
-			trace '2';
+			gosub traceSpR;
 			gosub traceReg2;
 			
-			trace 'R';
-			trace 'X';
+			gosub traceSpR;
 			gosub traceRegX;
 			
-			trace 'R';
-			trace 'P';
+			gosub traceSpR;
 			gosub traceRegP;
 
-			trace 'R';
-			trace 'N';
+			gosub traceSpR;
 			gosub traceRegN;
 			
 			trace CR;
@@ -264,46 +266,56 @@ traceX:		reg_t <= xp, trace 'X';
 			reg_trace <= ss_enable_zero, 
 			dispatch;	// resume with instruction execution
 
-traceReg0:	y_hi, sel_reg = zero, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = zero, reg_t <= alu_y, gosub traceT; 
+traceReg0:	trace '0';
+			trace '=';
+			sel_reg = zero, trace 0b1000_1101;
+			sel_reg = zero, trace 0b1000_1100;
+			sel_reg = zero, trace 0b1000_1011;
+			sel_reg = zero, trace 0b1000_1010;
 			return;
 
-traceReg1:	y_hi, sel_reg = one, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = one, reg_t <= alu_y, gosub traceT; 
+traceReg1:	trace '1';
+			trace '=';
+			sel_reg = one, trace 0b1000_1101;
+			sel_reg = one, trace 0b1000_1100;
+			sel_reg = one, trace 0b1000_1011;
+			sel_reg = one, trace 0b1000_1010;
 			return;
 
-traceReg2:	y_hi, sel_reg = two, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = two, reg_t <= alu_y, gosub traceT; 
+traceReg2:	trace '2';
+			trace '=';
+			sel_reg = two, trace 0b1000_1101;
+			sel_reg = two, trace 0b1000_1100;
+			sel_reg = two, trace 0b1000_1011;
+			sel_reg = two, trace 0b1000_1010;
 			return;
 
-traceRegX:	y_hi, sel_reg = x, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = x, reg_t <= alu_y, gosub traceT; 
+traceRegX:	trace 'X';
+			trace '=';
+			sel_reg = x, trace 0b1000_1101;
+			sel_reg = x, trace 0b1000_1100;
+			sel_reg = x, trace 0b1000_1011;
+			sel_reg = x, trace 0b1000_1010;
 			return;
 
-traceRegP:	y_hi, sel_reg = p, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = p, reg_t <= alu_y, gosub traceT; 
+traceRegP:	trace 'P';
+			trace '=';
+			sel_reg = p, trace 0b1000_1101;
+			sel_reg = p, trace 0b1000_1100;
+			sel_reg = p, trace 0b1000_1011;
+			sel_reg = p, trace 0b1000_1010;
 			return;
 
-traceRegN:	y_hi, sel_reg = n, reg_t <= alu_y, trace '=';
-			trace 0b10000_001;
-			trace 0b10000_000;
-			y_lo, sel_reg = n, reg_t <= alu_y, gosub traceT;
+traceRegN:	trace 'N';
+			trace '=';
+			sel_reg = n, trace 0b1000_1101;
+			sel_reg = n, trace 0b1000_1100;
+			sel_reg = n, trace 0b1000_1011;
+			sel_reg = n, trace 0b1000_1010;
 			return;
 
-traceET:	trace '=';
-traceT:		trace 0b10000_001;
-			trace 0b10000_000;
-			trace ' ';
+traceSpR:	trace ' ';
+			trace 'R';
 			return;
 
 traceChar:  if traceReady then next else repeat;		// wait until tracer indicates processed character

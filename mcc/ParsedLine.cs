@@ -382,6 +382,7 @@ namespace mcc
             StringBuilder sbLine = new StringBuilder($"L{LineNumber:D4}");
             sbLine.Append(OrgValue < 0 ? "." : $"@{OrgValue:X4}.");
             sbLine.Append(string.IsNullOrEmpty(Label) ? " " : $"{Label}: ");
+
             sbLine.Append(Content);
 
             return sbLine.ToString();

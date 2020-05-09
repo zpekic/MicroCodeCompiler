@@ -25,7 +25,7 @@
             for (int address = Value; address <= (Value + Mask); address++)
             {
                 string comment = generateComment ? GetParsedLineString() : string.Empty;
-                memory.Write(address, data, comment, true, "mapper");
+                memory.Write(address, data, comment, null, true, "mapper");
                 generateComment = false;
             }
         }

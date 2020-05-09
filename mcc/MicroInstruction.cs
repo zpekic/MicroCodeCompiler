@@ -74,26 +74,31 @@ namespace mcc
         public void Project(MemBlock memory, int dataWidth, List<MicroField> fields, Dictionary<string, int> labelOrg)
         {
             StringBuilder uiBuilder = new StringBuilder();
+            StringBuilder miBuilder = new StringBuilder();
+            String bStr;
 
             // assemble the microinstruction word by iterating through all microinstruction fields
             foreach(MicroField mf in fields)
             {
                 if (mf is mcc.FieldIf)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_if, null, LineNumber), mf.Width));
-                    uiBuilder.Append("_");
+                    bStr = GetBinaryString(mf.FindValue(value_if, null, LineNumber), mf.Width);
+                    uiBuilder.Append($"{bStr}_");
+                    miBuilder.Append($" if ({bStr})");
                     continue;
                 }
                 if (mf is mcc.FieldThen)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_then, labelOrg, LineNumber), mf.Width));
-                    uiBuilder.Append("_");
+                    bStr = GetBinaryString(mf.FindValue(value_then, labelOrg, LineNumber), mf.Width);
+                    uiBuilder.Append($"{bStr}_");
+                    miBuilder.Append($" then {bStr}");
                     continue;
                 }
                 if (mf is mcc.FieldElse)
                 {
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(value_else, labelOrg, LineNumber), mf.Width));
-                    uiBuilder.Append("_");
+                    bStr = GetBinaryString(mf.FindValue(value_else, labelOrg, LineNumber), mf.Width);
+                    uiBuilder.Append($"{bStr}_");
+                    miBuilder.Append($" else {bStr},");
                     continue;
                 }
                 if (mf is mcc.FieldReg)
@@ -105,8 +110,9 @@ namespace mcc
                         registers.Remove(mf.Label); // means we used it
                     }
                     // TODO: replace FindValue() with EvaluateExpression()
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(reg, labelOrg, LineNumber), mf.Width));
-                    uiBuilder.Append("_");
+                    bStr = GetBinaryString(mf.FindValue(reg, labelOrg, LineNumber), mf.Width);
+                    uiBuilder.Append($"{bStr}_");
+                    miBuilder.Append($" {mf.Label} <= {bStr},");
                     continue;
                 }
                 if (mf is mcc.FieldVal)
@@ -118,19 +124,23 @@ namespace mcc
                         values.Remove(mf.Label); // means we used it
                     }
                     // TODO: replace FindValue() with EvaluateExpression()
-                    uiBuilder.Append(GetBinaryString(mf.FindValue(val, labelOrg, LineNumber), mf.Width));
-                    uiBuilder.Append("_");
+                    bStr = GetBinaryString(mf.FindValue(val, labelOrg, LineNumber), mf.Width);
+                    uiBuilder.Append($"{bStr}_");
+                    miBuilder.Append($" {mf.Label} = {bStr},");
                     continue;
                 }
             }
 
             // remove last underscore
             uiBuilder.Remove(uiBuilder.Length - 1, 1);
+            // remove last colon and add semicolon
+            miBuilder.Remove(miBuilder.Length - 1, 1);
+            miBuilder.Append(";");
 
             TraceListValues(registers.Keys.ToList<string>(), "Found unmatched <= assignments: ", true);
             TraceListValues(values.Keys.ToList<string>(), "Found unmatched = assignments: ", true);
 
-            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), false, "code");
+            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), miBuilder.ToString(), false, "code");
         }
 
         private void TraceListValues(List<string> list, string warning, bool fatal)

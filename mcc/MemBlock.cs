@@ -17,11 +17,13 @@ namespace mcc
         {
             public string Data;
             public string Comment;
+            public string ExtraComment;
 
-            public DataVector(string data, string comment)
+            public DataVector(string data, string comment, string extraComment)
             {
                 this.Data = data;
                 this.Comment = comment;
+                this.ExtraComment = extraComment;
             }
         }
 
@@ -48,7 +50,7 @@ namespace mcc
             Assert(outputFiles.Count >= 0, "No output files specified");
         }
 
-        public void Write(int address, string data, string comment, bool allowOverwrite, string flavor)
+        public void Write(int address, string data, string comment, string extraComment, bool allowOverwrite, string flavor)
         {
             Assert(address < (2 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
             string rawBinaryString = data.Replace("_", string.Empty);
@@ -63,7 +65,7 @@ namespace mcc
             {
                 logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
             }
-            memory.Add(address, new DataVector(data, comment));
+            memory.Add(address, new DataVector(data, comment, extraComment));
         }
 
         public void GetSize(out int depth, out int width)
@@ -161,6 +163,11 @@ namespace mcc
                     {
                         sb.Append("-- ");
                         sb.AppendLine(memory[address].Comment);
+                        if (!string.IsNullOrEmpty(memory[address].ExtraComment))
+                        {
+                            sb.Append("-- ");
+                            sb.AppendLine(memory[address].ExtraComment);
+                        }
                     }
                     sb.Append($"{address} => ");
                     sb.Append(GetVhdDataFromBinaryString(memory[address].Data));
