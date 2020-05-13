@@ -13,7 +13,7 @@
         public override void ParseContent()
         {
             base.ParseContent();
-            GetValueAndMask(Content, out Value, out Mask, null);
+            Assert(GetValueAndMask(Content, out Value, out Mask, null), $"Invalid map specifier {Content}");
 
         }
 

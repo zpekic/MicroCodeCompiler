@@ -1,0 +1,153 @@
+//----------------------------------------------------------
+//	 Screen TTY Microcode (c) 2020-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//----------------------------------------------------------
+			.code 6, 32, tty_screen_code.mif, tty_screen_code.cgf, tty_screen_code.vhd, tty_screen_code.hex, 4;
+			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty_screen_map.vhd, tty_screen_map.hex, 1;
+
+ready:		.valfield 1 values no, yes default no;
+
+seq_cond:	.if 3 values 
+			true, 			// hard-code to 1
+			char_is_zero,
+			cursorx_ge_maxcol,
+			cursory_ge_maxrow,
+			cursorx_is_zero,
+			cursory_is_zero,
+			memory_ready,
+			false			// hard-code to 0
+			default true;
+seq_then:	.then 6 values next, repeat, return, fork, @ default next;				// any label
+seq_else:	.else 6 values next, repeat, return, fork, 0x00..0x3F, @ default next;	// any value as it can be a trace char
+			
+cursorx:	.regfield 3 values same, zero, inc, dec, maxcol default same;
+
+cursory:	.regfield 3 values same, zero, inc, dec, maxrow default same;
+
+data:		.regfield 2 values same, char, memory, space default same;
+
+mem:		.valfield 2 values
+				nop,			// no memory access
+				read,			// mem(0) is RD
+				write,			// mem(1) is WR
+				-				// forbid read and write at same time
+				default nop;
+
+xsel		.valfield 1 values cursorx, altx default cursorx;	// column address output mux
+
+ysel		.valfield 1 values cursory, alty default cursory;	// row address output mux
+
+altx		.regfield 1 values same, cursorx default same;		// column alt reg
+
+alty		.regfield 1 values same, cursory default same;		// row alt reg
+
+reserved:	.valfield 2 values -, -, -, - default 0;
+
+// useful aliases
+goto:		.alias if false then next else;
+gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
+return:		.alias if false then next else return;
+noop:		.alias if true then next else next;
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations
+//	---------------------------------------------------------------------------
+_reset:		cursorx <= zero, cursory <= zero;  
+
+_reset1:	cursorx <= zero, cursory <= zero;
+
+_reset2:	cursorx <= zero, cursory <= zero;
+
+_reset3:	cursorx <= zero, cursory <= zero; 
+
+waitChar:	ready = yes, data <= char,
+			if char_is_zero then repeat else next;
+			
+			if true then fork else fork;	// interpret the ASCII code of char in data register as "instruction"
+
+			.map 0b???_????;		// default to printable character handler 
+main:		gosub printChar;
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then next else waitChar;
+
+			cursorx <= zero,
+			goto LF;
+
+			.map 0b00?_????;		// special characters 00-1F are not printable, so just ignore
+			goto waitChar;
+
+			.map 0b000_0001;		// 0x01 SOH == clear screen
+CLS:		data <= space, cursory <= zero;
+
+nextRow:	cursorx <= zero;
+			
+nextCol:	gosub printChar;
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then next else nextCol;
+
+			cursory <= inc;
+
+			if cursory_ge_maxrow then HOME else nextRow;
+
+			.map 0b000_0010;		// 0x02 STX == home
+HOME:		cursorx <= zero, cursory <= zero,
+			goto waitChar;
+
+			.map 0b000_1010;		// 0x0A LF (line feed)
+LF:			cursory <= inc;
+			
+			if cursory_ge_maxrow then next else waitChar;
+
+scrollUp:	cursory <= zero;
+			
+copyRow:	alty <= cursory, cursory <= inc;
+			
+			cursorx <= zero,
+			if cursory_ge_maxrow then lastLine else next;
+
+copyCol:	gosub readMem;
+			
+			gosub writeAlty;
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then copyRow else copyCol;
+			
+lastLine:	data <= space, 
+			cursory <= dec;
+
+clearCol:	gosub printChar;
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then clearCol else next;
+
+			.map 0b000_1101;		// 0x0D CR (carriage return)
+			cursorx <= zero,
+			goto waitChar;
+
+printChar:	if memory_ready then next else repeat;
+
+			mem = write, xsel = cursorx, ysel = cursory;
+
+			mem = write, xsel = cursorx, ysel = cursory,
+			return;
+
+readMem:	if memory_ready then next else repeat;
+
+			mem = read, xsel = cursorx, ysel = cursory;
+
+			mem = read, xsel = cursorx, ysel = cursory, data <= memory,
+			return;
+
+writeAlty:	if memory_ready then next else repeat;
+
+			mem = write, xsel = cursorx, ysel = alty;
+
+			mem = write, xsel = cursorx, ysel = alty,
+			return;
+		

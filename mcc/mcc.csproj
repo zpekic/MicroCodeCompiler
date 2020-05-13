@@ -81,6 +81,7 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="..\Microcode\CDP180X.mcc" />
+    <None Include="..\Microcode\tty_screen.mcc" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.6.1">

@@ -86,9 +86,7 @@ alu_s:		.valfield 2 values bus,	 d, const, reg_lo default bus;	// const comes fr
 alu_f:		.valfield 3 values xor, and, ior, pass_r, r_plus_s, r_plus_ns, nr_plus_s, pass_s default xor;	// f2 selects logic/add, f1 and f0 flip r/s
 alu_cin:	.valfield 1 values f1_or_f0, df default f1_or_f0;	// f1_or_f1 will generate 0 for add, and 1 for subtract
  
-reg_sample	.regfield 1 values same, sample default same; // sample captures EF, DMA_IN, DMA_OUT, INT
-
-ct_oper:	.valfield 3 values disable, enable default disable; // enable counter/timer operations 
+ct_oper:	.valfield 4 values disable, enable default disable; // enable counter/timer operations 
 
 // Other bus signals tied to 8-clock cycle sequence (counter increments on falling clock)
 // tpa <= cycle1 when (clk = '1') else (not cycle2); 
@@ -134,7 +132,6 @@ reg_clr:	.alias reg_r <= zero;
 goto:		.alias if false then next else;
 gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
 return:		.alias if false then next else return;
-sample:		.alias reg_sample <= sample;
 noop:		.alias if true then next else next;
 
 			.org 0;
@@ -156,7 +153,7 @@ _reset3:	reg_clr, sel_reg = zero,							// R(0) = 0;
 
 //	Read memory into instruction register
 //	---------------------------------------------------------------------------
-fetch:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc;
+fetch:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_inc;
 
 //	Given that instruction register is loaded late, execute 1 more cycle before forking. It is useful to load B <= M(X)
 // ----------------------------------------------------------------------------
@@ -167,10 +164,10 @@ load_b:		exec_memread, sel_reg = x, reg_b <= alu_y, y_bus,
 //	These requests are honored at the end of each instruction execution
 //	--------------------------------------------------------------------------
 			.org 0b0001_0000;
-dma_or_int: sample, if continue_sw then fetch else dma_or_int;	// else mux is else(7 downto 3) & dma_in & dma_out & int & '1' 
+dma_or_int: if continue_sw then fetch else dma_or_int;	// else mux is else(7 downto 3) & dma_in & dma_out & int & '1' 
 
 			.org 0b0001_0001;	// no special cycle needed, start a new fetch
-fetch1:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_inc,
+fetch1:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_inc,
 			goto load_b;
 
 			.org 0b0001_0011;	// INT
@@ -332,7 +329,7 @@ LDN:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
 			if continue then fetch else dma_or_int;
 			
 			.map 0b0_0000_0000;	// override for LDN 0
-IDL:		sample;
+IDL:		noop;
 			// dead loop until DMA or INT detected
 			if continue then IDL else dma_or_int;
 
@@ -378,7 +375,7 @@ INP:		exec_ioread, sel_reg = x, y_bus, reg_d <= alu_y,
 			.map 0b0_0110_1000;	// override for INP 0 is the linking opcode for extended instructions			
 EXTEND:		if mode_1805 then next else NOP;
 
-			fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, sample, reg_extend <= one,
+			fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_extend <= one,
 			reg_inc,
 			goto load_b;
 			
