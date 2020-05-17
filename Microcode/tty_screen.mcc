@@ -2,10 +2,14 @@
 //	 Screen TTY Microcode (c) 2020-... zpekic@hotmail.com
 //  Compile with https://github.com/zpekic/MicroCodeCompiler
 //----------------------------------------------------------
-			.code 6, 32, tty_screen_code.mif, tty_screen_code.cgf, tty_screen_code.vhd, tty_screen_code.hex, 4;
-			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty_screen_map.vhd, tty_screen_map.hex, 1;
+			.code 6, 32, tty_screen_code.mif, tty_screen_code.cgf, tty:tty_screen_code.vhd, tty_screen_code.hex, 4;
+			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty:tty_screen_map.vhd, tty_screen_map.hex, 1;
 
-ready:		.valfield 1 values no, yes default no;
+ready:		.valfield 2 values 
+				no,
+				char_is_zero,
+				yes,
+				- default no;
 
 seq_cond:	.if 3 values 
 			true, 			// hard-code to 1
@@ -41,7 +45,7 @@ altx		.regfield 1 values same, cursorx default same;		// column alt reg
 
 alty		.regfield 1 values same, cursory default same;		// row alt reg
 
-reserved:	.valfield 2 values -, -, -, - default 0;
+reserved:	.valfield 1 values -, - default 0;
 
 // useful aliases
 goto:		.alias if false then next else;
@@ -60,23 +64,25 @@ _reset2:	cursorx <= zero, cursory <= zero;
 
 _reset3:	cursorx <= zero, cursory <= zero; 
 
-waitChar:	ready = yes, data <= char,
+waitChar:	ready = char_is_zero, data <= char,
 			if char_is_zero then repeat else next;
 			
 			if true then fork else fork;	// interpret the ASCII code of char in data register as "instruction"
+
 
 			.map 0b???_????;		// default to printable character handler 
 main:		gosub printChar;
 
 			cursorx <= inc;
 
-			if cursorx_ge_maxcol then next else waitChar;
+			if cursorx_ge_maxcol then next else nextChar;
 
 			cursorx <= zero,
 			goto LF;
 
 			.map 0b00?_????;		// special characters 00-1F are not printable, so just ignore
-			goto waitChar;
+nextChar:	ready = yes,
+			if char_is_zero then waitChar else repeat;
 
 			.map 0b000_0001;		// 0x01 SOH == clear screen
 CLS:		data <= space, cursory <= zero;
@@ -95,59 +101,54 @@ nextCol:	gosub printChar;
 
 			.map 0b000_0010;		// 0x02 STX == home
 HOME:		cursorx <= zero, cursory <= zero,
-			goto waitChar;
+			goto nextChar;
 
 			.map 0b000_1010;		// 0x0A LF (line feed)
 LF:			cursory <= inc;
 			
-			if cursory_ge_maxrow then next else waitChar;
+			if cursory_ge_maxrow then next else nextChar;
 
 scrollUp:	cursory <= zero;
 			
-copyRow:	alty <= cursory, cursory <= inc;
+copyRow:	if cursory_ge_maxrow then lastLine else next;
+
+			cursorx <= zero;
+
+copyCol:	if cursorx_ge_maxcol then nextY else next;
+
+			cursory <= inc, 
+			gosub readMem;
 			
-			cursorx <= zero,
-			if cursory_ge_maxrow then lastLine else next;
+			cursory <= dec,
+			gosub printChar;
 
-copyCol:	gosub readMem;
-			
-			gosub writeAlty;
+			cursorx <= inc,
+			goto copyCol;
 
-			cursorx <= inc;
+nextY:		cursory <= inc,
+			goto copyRow;
 
-			if cursorx_ge_maxcol then copyRow else copyCol;
-			
-lastLine:	data <= space, 
-			cursory <= dec;
+lastLine:	data <= space, cursory <= dec, cursorx <= zero;
 
-clearCol:	gosub printChar;
+clearCol:	if cursorx_ge_maxcol then CR else next;
 
-			cursorx <= inc;
+			gosub printChar;
 
-			if cursorx_ge_maxcol then clearCol else next;
+			cursorx <= inc,
+			goto clearCol;
 
 			.map 0b000_1101;		// 0x0D CR (carriage return)
-			cursorx <= zero,
-			goto waitChar;
+CR:			cursorx <= zero,
+			goto nextChar;
 
 printChar:	if memory_ready then next else repeat;
-
-			mem = write, xsel = cursorx, ysel = cursory;
 
 			mem = write, xsel = cursorx, ysel = cursory,
 			return;
 
 readMem:	if memory_ready then next else repeat;
 
-			mem = read, xsel = cursorx, ysel = cursory;
-
 			mem = read, xsel = cursorx, ysel = cursory, data <= memory,
 			return;
 
-writeAlty:	if memory_ready then next else repeat;
-
-			mem = write, xsel = cursorx, ysel = alty;
-
-			mem = write, xsel = cursorx, ysel = alty,
-			return;
 		

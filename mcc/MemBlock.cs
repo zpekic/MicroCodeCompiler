@@ -116,11 +116,31 @@ namespace mcc
 
             foreach (string fileName in this.outputFiles)
             {
-                FileInfo outputFileInfo = new FileInfo(fileName);
+                FileInfo outputFileInfo = null;
+                string prefix = null;
+                string[] prefixNamePair = fileName.Split(':');
+
+                switch (prefixNamePair.Length)
+                {
+                    case 0:
+                        Assert(false, $"Filename '{fileName}' is invalid.");
+                        break;
+                    case 1:
+                        outputFileInfo = new FileInfo(prefixNamePair[0]);
+                        break;
+                    case 2:
+                        prefix = prefixNamePair[0];
+                        outputFileInfo = new FileInfo(prefixNamePair[1]);
+                        break;
+                    default:
+                        Assert(false, $"Filename '{fileName}' is invalid.");
+                        break;
+                }
+
                 switch (outputFileInfo.Extension.ToLowerInvariant())
                 {
                     case ".vhd":
-                        count += GenerateVhdFile(outputFileInfo, fields, sbVhdUninit.ToString());
+                        count += GenerateVhdFile(prefix, outputFileInfo, fields, sbVhdUninit.ToString());
                         break;
                     case ".hex":
                         count += GenerateHexFile(outputFileInfo);
@@ -474,7 +494,7 @@ namespace mcc
             return sbSizes.ToString();
         }
 
-        protected virtual int GenerateVhdFile(FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
+        protected virtual int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
         {
             // the real implementation is in derived classes as the generate VHD varies 
             return 0;
