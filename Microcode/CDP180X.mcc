@@ -353,8 +353,8 @@ sbranch2:	sel_reg = p, reg_r <= rhi_ylo, y_b,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0100_????;								// D <= M(R(N)), R(N) <= R(N) + 1
-LDA:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
-			goto INC;
+LDA:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y, reg_inc,
+			if continue then fetch else dma_or_int;
 
 			.map 0b0_0101_????;								// M(R(N)) <= D;
 STR:		exec_memwrite, sel_reg = n, y_d,		
@@ -396,7 +396,7 @@ LDXA:		y_b, reg_d <= alu_y;
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_0011;
-STXD:		exec_memwrite, y_d;
+STXD:		exec_memwrite, y_d, sel_reg = x;
 
 			sel_reg = x, reg_dec,
 			if continue then fetch else dma_or_int;
@@ -420,9 +420,7 @@ SMB:		reg_df <= alu_cout, reg_d <= alu_y, y_d_minus_b, alu_cin = df,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_1000;
-SAV:		reg_b <= alu_y, y_t;
-
-			exec_memwrite, sel_reg = x, y_b,		
+SAV:		exec_memwrite, sel_reg = x, y_t,		
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0111_1001;
