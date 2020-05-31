@@ -402,7 +402,7 @@ namespace mcc
             return concat.TrimEnd(delimiter);
         }
 
-        protected string GetBinaryString(int value, int length)
+        public string GetBinaryString(int value, int length)
         {
             Assert((length > 0) && (length <= 32), "Field length must be between 0 and 32");
 

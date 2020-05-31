@@ -74,7 +74,7 @@ namespace mcc
             width = this.dataWidth;
         }
 
-        public int Generate(bool allowUninitialized, List<MicroField> fields)
+        public int Generate(bool allowUninitialized, List<MicroField> fields, bool isConversion)
         {
             int count = 0;
             int capacity = 2 << (this.addressWidth - 1);
@@ -140,10 +140,10 @@ namespace mcc
                 switch (outputFileInfo.Extension.ToLowerInvariant())
                 {
                     case ".vhd":
-                        count += GenerateVhdFile(prefix, outputFileInfo, fields, sbVhdUninit.ToString());
+                        count += GenerateVhdFile(prefix, outputFileInfo, fields, sbVhdUninit.ToString(), isConversion);
                         break;
                     case ".hex":
-                        count += GenerateHexFile(outputFileInfo);
+                        count += GenerateHexFile(outputFileInfo, !isConversion);
                         break;
                     case ".cgf":
                         count += GenerateCgfFile(outputFileInfo, "0", this.dataWidth % 4 == 0 ? 16 : 2);
@@ -229,7 +229,7 @@ namespace mcc
             return sb.ToString();
         }
 
-        protected int GenerateHexFile(FileInfo outputFileInfo)
+        protected int GenerateHexFile(FileInfo outputFileInfo, bool pad)
         {
             switch (this.byteWidth)
             {
@@ -253,8 +253,9 @@ namespace mcc
                 int value;
                 int mask;
                 byte[] record = new byte[5 + this.byteWidth];
+                int skip = 1;
 
-                for (int address = 0; address < capacity; address++)
+                for (int address = 0; address < capacity; address += skip)
                 {
                     if (memory.ContainsKey(address))
                     {
@@ -265,16 +266,39 @@ namespace mcc
                         }
                         else
                         {
-                            // pad from left until we have the exact length
-                            while (rawBinary.Length < 8 * this.byteWidth)
+                            if (pad)
                             {
-                                rawBinary = "0" + rawBinary;
+                                // pad from left until we have the exact length
+                                while (rawBinary.Length < 8 * this.byteWidth)
+                                {
+                                    rawBinary = "0" + rawBinary;
+                                }
+                                skip = 1;
+                            }
+                            else
+                            {
+                                int offset = 1;
+                                // get data until we have the exact length
+                                while (rawBinary.Length < 8 * this.byteWidth)
+                                {
+                                    rawBinary += memory[address + offset].Data.Replace("_", string.Empty);
+                                    offset++;
+                                }
+                                skip = this.byteWidth;
                             }
                         }
-                                     
+
                         record[0] = (byte)this.byteWidth;
-                        record[1] = (byte)((address * this.byteWidth) >> 8);
-                        record[2] = (byte)(address * this.byteWidth);
+                        if (pad)
+                        { 
+                            record[1] = (byte)((address * this.byteWidth) >> 8);
+                            record[2] = (byte)(address * this.byteWidth);
+                        }
+                        else
+                        {
+                            record[1] = (byte)(address >> 8);
+                            record[2] = (byte)(address);
+                        }
                         record[3] = 0;
                         for (int i = 0; i < this.byteWidth; i++)
                         {
@@ -445,7 +469,7 @@ namespace mcc
             return 1;
         }
 
-        protected string LoadFile(string fileName)
+        protected string LoadFile(string fileName, bool isConversion)
         {
             if (File.Exists(fileName))
             {
@@ -459,18 +483,26 @@ namespace mcc
                 sb.AppendLine("--------------------------------------------------------");
                 sb.AppendLine("library IEEE;");
                 sb.AppendLine("use IEEE.STD_LOGIC_1164.all;");
-                sb.AppendLine("use IEEE.numeric_std.all;");
+                sb.AppendLine("--use IEEE.numeric_std.all;");
                 sb.AppendLine();
                 sb.AppendLine("package [NAME] is");
                 sb.AppendLine();
-                sb.AppendLine("[SIZES]");
-                sb.AppendLine();
-                sb.AppendLine("[TYPE]");
-                sb.AppendLine();
-                sb.AppendLine("[SIGNAL]");
-                sb.AppendLine();
-                sb.AppendLine("[FIELDS]");
-                sb.AppendLine();
+                if (isConversion)
+                {
+                    sb.AppendLine("[TYPE]");
+                    sb.AppendLine();
+                }
+                else
+                {
+                    sb.AppendLine("[SIZES]");
+                    sb.AppendLine();
+                    sb.AppendLine("[TYPE]");
+                    sb.AppendLine();
+                    sb.AppendLine("[SIGNAL]");
+                    sb.AppendLine();
+                    sb.AppendLine("[FIELDS]");
+                    sb.AppendLine();
+                }
                 sb.AppendLine("[MEMORY]");
                 sb.AppendLine();
                 sb.AppendLine("end [NAME];");
@@ -494,7 +526,7 @@ namespace mcc
             return sbSizes.ToString();
         }
 
-        protected virtual int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
+        protected virtual int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
         {
             // the real implementation is in derived classes as the generate VHD varies 
             return 0;

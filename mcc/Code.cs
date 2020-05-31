@@ -10,12 +10,13 @@ namespace mcc
         {
         }
 
-        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
+        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
         {
             Assert(!string.IsNullOrEmpty(prefix), "<prefix>:<codefilename>.vhd expected - prefix not found");
+            Assert(!isConversion, "Code memory cannot be used for conversion (internal error)");
 
             logger.Write($"Generating code '{outputFileInfo.FullName}' ...");
-            string template = LoadFile("code_template.vhd");
+            string template = LoadFile("code_template.vhd", isConversion);
             int capacity = 2 << (this.addressWidth - 1);
             string defaultMicroinstruction = string.Empty;
             string name = outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf("."));

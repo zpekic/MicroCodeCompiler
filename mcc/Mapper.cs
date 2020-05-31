@@ -15,13 +15,13 @@ namespace mcc
             this.Width = -1;
         }
 
-        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges)
+        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
         {
             Assert(!string.IsNullOrEmpty(prefix), "<prefix>:<mapperfilename>.vhd expected - prefix not found");
             Assert(fields == null, "Unexpected data passed in");
 
             logger.Write($"Generating mapper '{outputFileInfo.FullName}' ...");
-            string template = LoadFile("mapper_template.vhd");
+            string template = LoadFile(isConversion ? "conversion_template.vhd" : "mapper_template.vhd", isConversion);
             int capacity = 2 << (this.addressWidth - 1);
             string name = outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf("."));
 
