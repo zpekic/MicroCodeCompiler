@@ -2,8 +2,8 @@
 //	CDP1802/05/06 Microcode (c) 2020-... zpekic@hotmail.com
 //  Compile with https://github.com/zpekic/MicroCodeCompiler
 //----------------------------------------------------------
-			.code 8, 64, cdp180x_code.mif, cdp180x_code.cgf, cpu:cdp180x_code.vhd, cdp180x_code.hex, 8;
-			.mapper 9, 8, cdp180x_map.mif, cdp180x_map.cgf, cpu:cdp180x_map.vhd, cdp180x_map.hex, 1;
+			.code 8, 64, cdp180x_code.mif, cdp180x_code.cgf, cdp180x_code.coe, cpu:cdp180x_code.vhd, cdp180x_code.hex, 8;
+			.mapper 9, 8, cdp180x_map.mif, cdp180x_map.cgf, cdp180x_map.coe, cpu:cdp180x_map.vhd, cdp180x_map.hex, 1;
 
 
 bus_state	.valfield 4 values	// SC1	SC0	RD	WR	OE	NE
@@ -332,6 +332,7 @@ LDN:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
 IDL:		noop;
 			// dead loop until DMA or INT detected
 			if continue then IDL else dma_or_int;
+			//if continue then traceState else dma_or_int;
 
 			.map 0b0_0001_????;	// R(N) <= R(N) + 1
 INC:		sel_reg = n, reg_inc,

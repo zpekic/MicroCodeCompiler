@@ -148,6 +148,9 @@ namespace mcc
                     case ".cgf":
                         count += GenerateCgfFile(outputFileInfo, "0", this.dataWidth % 4 == 0 ? 16 : 2);
                         break;
+                    case ".coe":
+                        count += GenerateCoeFile(outputFileInfo, GetBlockName(), this.dataWidth % 4 == 0 ? 16 : 2);
+                        break;
                     case ".mif":
                         count += GenerateMifFile(outputFileInfo, this.dataWidth % 4 == 0 ? 16 : 2);
                         break;
@@ -376,6 +379,59 @@ namespace mcc
                 cgfFile.WriteLine($"#end");
 
                 logger.WriteLine(" Done.");
+            }
+            return 1;
+        }
+
+        protected int GenerateCoeFile(FileInfo outputFileInfo, string from, int data_radix)
+        {
+            int capacity = 2 << (this.addressWidth - 1);
+
+            using (System.IO.StreamWriter coeFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
+            {
+                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+
+                coeFile.WriteLine($"#COE file \"{outputFileInfo.Name}\" generated from \"{from}\"");
+                coeFile.WriteLine($"MEMORY_INITIALIZATION_RADIX={data_radix};");
+                coeFile.WriteLine($"MEMORY_INITIALIZATION_VECTOR=");
+
+                string data;
+                int emptyCount = 0;
+                int initializedCount = 0;
+                string emptyBinaryString = "";
+                for (int address = 0; address < capacity; address++)
+                {
+                    if (memory.ContainsKey(address))
+                    {
+                        data = memory[address].Data.Replace("_", string.Empty);
+                        initializedCount++;
+                    }
+                    else
+                    {
+                        while (emptyBinaryString.Length < this.dataWidth)
+                        {
+                            emptyBinaryString = "0" + emptyBinaryString;
+                        }
+
+                        data = emptyBinaryString;
+                        emptyCount++;
+                    }
+                    if (data_radix == 16)
+                    {
+                        data = GetHexFromBinary(data, this.dataWidth);
+                    }
+
+                    if ((capacity - address) == 1)
+                    {
+                        coeFile.WriteLine($"{data};");
+                    }
+                    else
+                    {
+                        coeFile.WriteLine($"{data},");
+                    }
+                }
+
+                logger.WriteLine($" Done (initialized locations: {initializedCount}, empty locations: {emptyCount}, total locations: {emptyCount + initializedCount}).");
             }
             return 1;
         }
