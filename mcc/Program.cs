@@ -78,7 +78,7 @@ namespace mcc
                     Assert(int.TryParse(args[2], out wordWidth), "Word width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
                     Assert((wordWidth == 8) || (wordWidth == 16) || (wordWidth == 32), "Word width must be 8, 16 or 32");
                     Assert(int.TryParse(args[3], out recordWidth), "Record width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                    Assert((recordWidth == 4) || (recordWidth == 4) || (wordWidth == 8) || (wordWidth == 16), "Record width must be 2, 4, 8 or 16");
+                    Assert((recordWidth == 1) || (recordWidth == 2) || (recordWidth == 4) || (wordWidth == 8) || (wordWidth == 16), "Record width must be 1, 2, 4, 8 or 16");
 
                     byte[] fileBytes = File.ReadAllBytes(sourceFileName);
 
