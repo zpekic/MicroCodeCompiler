@@ -2,8 +2,9 @@
 //	 Screen TTY Microcode (c) 2020-... zpekic@hotmail.com
 //  Compile with https://github.com/zpekic/MicroCodeCompiler
 //----------------------------------------------------------
-			.code 6, 32, tty_screen_code.mif, tty_screen_code.cgf, tty:tty_screen_code.vhd, tty_screen_code.hex, 4;
-			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty:tty_screen_map.vhd, tty_screen_map.hex, 1;
+			.code 6, 32, tty_screen_code.mif, tty_screen_code.cgf, tty:tty_screen_code.vhd, tty_screen_code.hex, tty_screen_code.bin, 4;
+			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty:tty_screen_map.vhd, tty_screen_map.hex, tty_screen_map.bin, 1;
+			.controller tty_control_unit.vhd, 4;
 
 ready:		.valfield 2 values 
 				no,

@@ -12,6 +12,7 @@ namespace mcc
         protected List<string> outputFiles = new List<string>();
         protected int byteWidth;
         protected Dictionary<int, DataVector> memory = new Dictionary<int, DataVector>();
+        protected byte[,] byteBlock = null;
 
         public struct DataVector
         {
@@ -38,7 +39,7 @@ namespace mcc
 
             string[] param = this.Content.Split(',');
 
-            Assert(param.Length > 3, "Missing parameter(s)");
+            Assert(param.Length > 3, "Missing parameter(s) - expected: address_width, data_width, filename0.ext[, filename1.ext [, ...]], byte_width");
             Assert(int.TryParse(param[0], out this.addressWidth), "Bad address width");
             Assert(int.TryParse(param[1], out this.dataWidth), "Bad data width");
             for (int i = 2;  i < param.Length - 1; i++)
@@ -154,6 +155,19 @@ namespace mcc
                     case ".mif":
                         count += GenerateMifFile(outputFileInfo, this.dataWidth % 4 == 0 ? 16 : 2);
                         break;
+                    case ".bin":
+                        if (this.byteWidth == 1)
+                        {
+                            // single byte width, endian does not apply
+                            count += GenerateBinFile(outputFileInfo, false);
+                        }
+                        else
+                        {
+                            // generate both big and little endian versions
+                            count += GenerateBinFile(new FileInfo(outputFileInfo.FullName.Replace(".bin", "_lendian.bin")), false);
+                            count += GenerateBinFile(new FileInfo(outputFileInfo.FullName.Replace(".bin", "_bendian.bin")), true);
+                        }
+                        break;
                     default:
                         logger.WriteLine(string.Format("Warning in line {0}: unsupported extension in file '{1}", this.LineNumber.ToString(), fileName));
                         break;
@@ -230,6 +244,70 @@ namespace mcc
             }
 
             return sb.ToString();
+        }
+
+        protected int GenerateBinFile(FileInfo outputFileInfo, bool bendian)
+        {
+            int capacity = 2 << (this.addressWidth - 1);
+
+            if (byteBlock == null)
+            {
+                byteBlock = new byte[capacity, this.byteWidth];
+                for (int address = 0; address < capacity; address++)
+                {
+                    if (memory.ContainsKey(address))
+                    {
+                        string rawBinary = memory[address].Data.Replace("_", string.Empty);
+                        if (rawBinary.Length > 8 * this.byteWidth)
+                        {
+                            Assert(true, string.Format("Data at location 0X{0:X4} too long ({1} bits) to fit {2} bytes", address, rawBinary.Length.ToString(), this.byteWidth.ToString()));
+                        }
+                        else
+                        {
+                            // pad from left until we have the exact length
+                            while (rawBinary.Length < 8 * this.byteWidth)
+                            {
+                                rawBinary = "0" + rawBinary;
+                            }
+                            // now fill the entry
+                            for (int i = 0; i < this.byteWidth; i++)
+                            {
+                                byteBlock[address, i] = (byte) Convert.ToInt32(rawBinary.Substring(i * 8, 8), 2);
+                            }
+                        }
+
+                    }
+                }
+            }
+
+            using (System.IO.BinaryWriter binWriter = new BinaryWriter(outputFileInfo.OpenWrite()))
+            {
+                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+
+                for (int address = 0; address < capacity; address++)
+                {
+                    if (bendian)
+                    {
+                        // big endian, start writing with MSByte in the record
+                        for (int i = this.byteWidth - 1; i >= 0; i--)
+                        {
+                            binWriter.Write(byteBlock[address, i]);
+                        }
+
+                    }
+                    else
+                    {
+                        // little endian, start writing with the LSByte in the record
+                        for (int i = 0; i < this.byteWidth; i++)
+                        {
+                            binWriter.Write(byteBlock[address, i]);
+                        }
+                    }
+                }
+
+                logger.WriteLine(" Done.");
+            }
+            return 1;
         }
 
         protected int GenerateHexFile(FileInfo outputFileInfo, bool pad)
@@ -525,7 +603,7 @@ namespace mcc
             return 1;
         }
 
-        protected string LoadFile(string fileName, bool isConversion)
+        protected string LoadVhdPackageTemplate(string fileName, bool isConversion)
         {
             if (File.Exists(fileName))
             {

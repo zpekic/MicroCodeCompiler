@@ -16,7 +16,7 @@ namespace mcc
             Assert(!isConversion, "Code memory cannot be used for conversion (internal error)");
 
             logger.Write($"Generating code '{outputFileInfo.FullName}' ...");
-            string template = LoadFile("code_template.vhd", isConversion);
+            string template = LoadVhdPackageTemplate("code_template.vhd", false);
             int capacity = 2 << (this.addressWidth - 1);
             string defaultMicroinstruction = string.Empty;
             string name = outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf("."));

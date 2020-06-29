@@ -21,7 +21,7 @@ namespace mcc
             Assert(fields == null, "Unexpected data passed in");
 
             logger.Write($"Generating mapper '{outputFileInfo.FullName}' ...");
-            string template = LoadFile(isConversion ? "conversion_template.vhd" : "mapper_template.vhd", isConversion);
+            string template = LoadVhdPackageTemplate(isConversion ? "conversion_template.vhd" : "mapper_template.vhd", isConversion);
             int capacity = 2 << (this.addressWidth - 1);
             string name = outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf("."));
 

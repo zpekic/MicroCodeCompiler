@@ -194,6 +194,19 @@ namespace mcc
                         continue;
                     }
 
+                    if (ParsedLine.Split3(rawLine, ".controller", out label, out content))
+                    {
+                        Assert(continuationLine == null, "Previous line not closed with ';'");
+                        Assert(!inImplementationSection, ".mapper outside definition section.");
+
+                        Controller controller = new Controller(lineCounter, orgValue, label, content, logger);
+                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
+                        continuationLine = ((ParsedLine) controller).Pass1();
+                        parsedLines.Add(controller);
+
+                        continue;
+                    }
+
                     if (ParsedLine.Split3(rawLine, ".map", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
@@ -350,6 +363,8 @@ namespace mcc
 
         private static void Pass1(string sourceFileName)
         {
+            Controller controller = null;
+
             Code code = null;
             int codeDepth = -1; 
             int codeWidth = -1;
@@ -365,6 +380,13 @@ namespace mcc
 
             foreach (ParsedLine pl in parsedLines)
             {
+                if (pl is Controller)
+                {
+                    Assert(controller == null, ".controller statement already defined");
+                    controller = (Controller)pl;
+                    continue;
+                }
+
                 if (pl is Code)
                 {
                     Assert(code == null, ".code statement already defined");
@@ -412,6 +434,10 @@ namespace mcc
 
             int outputFileCount = Generate((MemBlock) code, true, "Generating code: ", fields, false);
             outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null, false);
+            if (controller != null)
+            {
+                outputFileCount += controller.GenerateFiles("Generating controller");
+            }
 
             logger.WriteLine($"Success: pass 2 - {outputFileCount.ToString()} file(s) generated.");
         }
