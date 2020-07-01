@@ -23,18 +23,21 @@ namespace mcc
             {
                 logger = new Logger(args);
                 logger.PrintBanner();
-                Assert(args.Length > 0, "Source file [path\\]name missing.");
+                Assert(args.Length > 0, "Source file [path\\]name missing.\r\n\r\nUsage info: mcc.exe -h[elp]");
 
-                if (args[0].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase))
+                if (!HelpMode(args))
                 {
-                    // compile mode
-                    Pass0(args[0]);
-                    Pass1(args[0]);
-                }
-                else
-                {
-                    // convert from format to format mode
-                    Convert(args);
+                    if (args[0].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        // compile mode
+                        Pass0(args[0]);
+                        Pass1(args[0]);
+                    }
+                    else
+                    {
+                        // convert from format to format mode
+                        Convert(args);
+                    }
                 }
                 return 0;   // success
             }
@@ -57,14 +60,30 @@ namespace mcc
             }
         }
 
+        private static bool HelpMode(string[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("-h", StringComparison.InvariantCultureIgnoreCase) || args[i].StartsWith("-?", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    logger.PrintHelp(null);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void Convert(string[] args)
         {
             string sourceFileName = args[0];
+            Assert(sourceFileName.LastIndexOf('.') > 0, $"File extension missing in '{sourceFileName}'");
             string sourceExtension = sourceFileName.Substring(sourceFileName.LastIndexOf('.')).ToLower();
-            int addressWidth = 16;
-            int wordWidth = 1;
+            int addressWidth = 0;
+            int wordWidth = 8;
             int recordWidth = 16;
             string targetName = sourceFileName.Replace(sourceExtension, string.Empty);
+            Mapper mapper = null;
 
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
 
@@ -73,19 +92,38 @@ namespace mcc
                 case ".bin":
                     logger.WriteLine($"Converting binary file '{sourceFileName}' to other formats");
 
-                    Assert(int.TryParse(args[1], out addressWidth), "Address width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                    Assert((addressWidth > 0) && (addressWidth <= 16), "Address width out of expected range 1 .. 16");
-                    Assert(int.TryParse(args[2], out wordWidth), "Word width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                    Assert((wordWidth == 8) || (wordWidth == 16) || (wordWidth == 32), "Word width must be 8, 16 or 32");
-                    Assert(int.TryParse(args[3], out recordWidth), "Record width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                    Assert((recordWidth == 1) || (recordWidth == 2) || (recordWidth == 4) || (wordWidth == 8) || (wordWidth == 16), "Record width must be 1, 2, 4, 8 or 16");
+                    if (args.Length > 1)
+                    {
+                        Assert(int.TryParse(args[1], out addressWidth), "Address width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                        Assert((addressWidth >= 0) && (addressWidth <= 16), "Address width out of expected range 0 (auto) .. 16");
+                        if (args.Length > 2)
+                        {
+                            Assert(int.TryParse(args[2], out wordWidth), "Word width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                            Assert((wordWidth == 8) || (wordWidth == 16) || (wordWidth == 32), "Word width must be 8, 16 or 32");
+                            if (args.Length > 3)
+                            {
+                                Assert(int.TryParse(args[3], out recordWidth), "Record width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                                Assert((recordWidth == 1) || (recordWidth == 2) || (recordWidth == 4) || (recordWidth == 8) || (recordWidth == 16), "Record width must be 1, 2, 4, 8 or 16");
+                            }
+                        }
+                    }
 
                     byte[] fileBytes = File.ReadAllBytes(sourceFileName);
 
+                    if (addressWidth == 0)
+                    {
+                        // find out addresswidth using the actual file size
+                        while (fileBytes.Length > (wordWidth >> 3) * (1 << addressWidth))
+                        {
+                            addressWidth++;
+                        }
+                    }
+                    Assert((addressWidth > 0) && (addressWidth <= 16), $"Evaluated address width of {addressWidth} out of expected range 1 .. 16");
+
                     Assert(fileBytes.Length == (wordWidth >> 3) * (1 << addressWidth), $"Count of bytes in file ({fileBytes.Length}) not matching expected count of ({1 << addressWidth} * {wordWidth >> 3})");
 
-                    string content = $"{addressWidth}, {wordWidth}, {targetName}.mif, {targetName}.cgf, mem:{targetName}.vhd, {targetName}.hex, {recordWidth};";
-                    Mapper mapper = new Mapper(1, -1, string.Empty, content, logger);
+                    string content = $"{addressWidth}, {wordWidth}, {targetName}.coe, {targetName}.mif, {targetName}.cgf, mem:{targetName}.vhd, {targetName}.hex, {recordWidth};";
+                    mapper = new Mapper(1, -1, string.Empty, content, logger);
                     ((ParsedLine)mapper).Pass1();
 
                     // write bytes into mapper
@@ -102,20 +140,16 @@ namespace mcc
                         mapper.Write(address, data.TrimEnd(new char[] { '_' }), sourceFileName, extraComment, false, "binary");
                     }
 
-                    // Generate all the destination files
-                    int outputFileCount = Generate((MemBlock)mapper, false, "Generating: ", null, true);
-
-                    logger.WriteLine($"Success: Conversion - {outputFileCount.ToString()} file(s) generated.");
-
                     break;
                 default:
                     Assert(false, $"Source file '{sourceFileName}' format not supported");
                     break;
             }
 
-            sourceFile = new System.IO.StreamReader(sourceFileName);
-            
+            // Generate all the destination files
+            int outputFileCount = Generate((MemBlock)mapper, false, "Generating: ", null, true);
 
+            logger.WriteLine($"Success: Conversion - {outputFileCount.ToString()} file(s) generated.");
         }
 
         private static void Pass0(string sourceFileName)

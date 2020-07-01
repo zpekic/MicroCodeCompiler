@@ -44,19 +44,43 @@ namespace mcc
             string copyRight = $"-- mcc V{fileVersion} - Custom microcode compiler (c)2020-... ";
             string gitHub = "--    https://github.com/zpekic/MicroCodeCompiler";
 
+            PrintLines(outputFile, new List<string> { dashes, copyRight, gitHub, dashes });
+        }
+
+        public void PrintHelp(StreamWriter outputFile)
+        {
+            List<string> lines = new List<string>();
+
+            lines.Add(string.Empty);
+            lines.Add("Compile mode (generate microcode, mapper and control unit files):");
+            lines.Add("mcc.exe [relpath|fullpath\\]sourcefile.mcc");
+            lines.Add(string.Empty);
+            lines.Add("Convert mode (generate sourcefile.coe, .cgf, .mif, .hex, .vhd files):");
+            lines.Add("mcc.exe [relpath|fullpath\\]sourcefile.bin [addresswidth [[wordwidth [recordwidth]]]");
+            lines.Add("addresswidth   ... 2^addresswidth is memory depth (integer, range: 0 to 16, default: 0 which will infer from file size)");
+            lines.Add("wordwidth      ... memory width (integer, values: 8, 16, 32 bits, default: 8 (1 byte))");
+            lines.Add("recordwidth    ... used for .hex files (integer, values: 1, 2, 4, 8, 16, 32 bytes, default: 16)");
+            lines.Add(string.Empty);
+            lines.Add("For more info see https://hackaday.io/project/172073-microcoding-for-fpgas");
+
+            PrintLines(outputFile, lines);
+            }
+
+        private void PrintLines(StreamWriter outputFile, List<string> lines)
+        { 
             if (outputFile == null)
             {
-                System.Console.WriteLine(dashes);
-                System.Console.WriteLine(copyRight);
-                System.Console.WriteLine(gitHub);
-                System.Console.WriteLine(dashes);
+                foreach (string line in lines)
+                {
+                    System.Console.WriteLine(line);
+                }
             }
             else
             {
-                outputFile.WriteLine(dashes);
-                outputFile.WriteLine(copyRight);
-                outputFile.WriteLine(gitHub);
-                outputFile.WriteLine(dashes);
+                foreach (string line in lines)
+                {
+                    outputFile.WriteLine(line);
+                }
             }
         }
 
