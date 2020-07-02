@@ -11,10 +11,10 @@ bus_state	.valfield 4 values	// SC1	SC0	RD	WR	OE	NE
 				exec_nop,		//	0	1	0	0	0	0	
 				exec_memread,	//	0	1	1	0	0	0
 				exec_memwrite,	//	0	1	0	1	1	0
-				exec_ioread,	//	0	1	0	1	0	1
-				exec_iowrite,	//	0	1	1	0	0	1
-				dma_memread,	//	1	0	0	0	0	0
-				dma_memwrite,	//	1	0	0	0	0	0
+				exec_ioread,	//	0	1	0	1	0	1	INP
+				exec_iowrite,	//	0	1	1	0	0	1	OUT
+				dma_memread,	//	1	0	1	0	0	0	DMAOUT
+				dma_memwrite,	//	1	0	0	1	0	0	DMAIN
 				int_nop,		//	1	1	0	0	0	0
 				fetch_memread,	//	0	0	1	0	0	0
 				-,
@@ -363,7 +363,7 @@ STR:		exec_memwrite, sel_reg = n, y_d,
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_0???;
-OUT:		exec_iowrite, sel_reg = x, reg_inc,				// DEVICE <= M(R(X)), R(X) <= R(X) + 1
+OUT:		exec_iowrite, sel_reg = x, reg_inc,				// DEVICE(N) <= M(R(X)), R(X) <= R(X) + 1
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_0000;	// override for OUT 0
@@ -371,7 +371,7 @@ IRX: 		sel_reg = x, reg_inc,							// R(X) <= R(X) + 1
 			if continue then fetch else dma_or_int;
 
 			.map 0b0_0110_1???;
-INP:		exec_ioread, sel_reg = x, y_bus, reg_d <= alu_y, 
+INP:		exec_ioread, sel_reg = x, y_bus, reg_d <= alu_y, // D, M(R(X)) <= DEVICE(N)
 			if continue then fetch else dma_or_int;	
 
 			.map 0b0_0110_1000;	// override for INP 0 is the linking opcode for extended instructions			
