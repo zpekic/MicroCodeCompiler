@@ -467,11 +467,11 @@ namespace mcc
 
             using (System.IO.StreamWriter coeFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
-                logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
+                logger.Write(string.Format("Writing '{0}' (LF only) ...", outputFileInfo.FullName));
 
-                coeFile.WriteLine($"#COE file \"{outputFileInfo.Name}\" generated from \"{from}\"");
-                coeFile.WriteLine($"MEMORY_INITIALIZATION_RADIX={data_radix};");
-                coeFile.WriteLine($"MEMORY_INITIALIZATION_VECTOR=");
+                coeFile.Write($";#COE file \"{outputFileInfo.Name}\" generated from \"{from}\"\n");
+                coeFile.Write($"MEMORY_INITIALIZATION_RADIX={data_radix};\n");
+                coeFile.Write($"MEMORY_INITIALIZATION_VECTOR=\n");
 
                 string data;
                 int emptyCount = 0;
@@ -501,11 +501,11 @@ namespace mcc
 
                     if ((capacity - address) == 1)
                     {
-                        coeFile.WriteLine($"{data};");
+                        coeFile.Write($"{data};\n");
                     }
                     else
                     {
-                        coeFile.WriteLine($"{data},");
+                        coeFile.Write($"{data}\n");
                     }
                 }
 
