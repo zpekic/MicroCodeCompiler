@@ -20,6 +20,32 @@ namespace mcc
             { "1000", "8"}, { "1001", "9"}, { "1010", "A"}, { "1011", "B"}, { "1100", "C"}, { "1101", "D"}, { "1110", "E"}, { "1111", "F"},
         };
 
+        protected Dictionary<char, int> HexChar2Val = new Dictionary<char, int>()
+        {
+            {'0', 0},
+            {'1', 1},
+            {'2', 2},
+            {'3', 3},
+            {'4', 4},
+            {'5', 5},
+            {'6', 6},
+            {'7', 7},
+            {'8', 8},
+            {'9', 9},
+            {'a', 10},
+            {'b', 11},
+            {'c', 12},
+            {'d', 13},
+            {'e', 14},
+            {'f', 15},
+            {'A', 10},
+            {'B', 11},
+            {'C', 12},
+            {'D', 13},
+            {'E', 14},
+            {'F', 15}
+        };
+
         public ParsedLine(int lineNumber, int orgValue, string label, string content, Logger logger)
         {
             this.LineNumber = lineNumber;

@@ -51,9 +51,23 @@ namespace mcc
             Assert(outputFiles.Count >= 0, "No output files specified");
         }
 
+        public void Write(int address, byte[] data, string comment, string extraComment, int LineNumber, string flavor)
+        {
+            StringBuilder sbBinary = new StringBuilder();
+
+            Assert(!memory.ContainsKey(address), $"Attempting to overwrite {flavor} location '{address:X4}'");
+            foreach (byte b in data)
+            {
+                sbBinary.Append(GetBinaryString(b, 8));
+                sbBinary.Append("_");
+            }
+            logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
+            memory.Add(address, new DataVector(sbBinary.ToString(), comment, extraComment));
+        }
+
         public void Write(int address, string data, string comment, string extraComment, bool allowOverwrite, string flavor)
         {
-            Assert(address < (2 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
+            Assert(address < (1 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
             string rawBinaryString = data.Replace("_", string.Empty);
             Assert(rawBinaryString.Length == this.dataWidth, $"Invalid {flavor} data width of {rawBinaryString.Length} ({this.dataWidth} expected)");
             if (memory.ContainsKey(address))
@@ -73,6 +87,145 @@ namespace mcc
         {
             depth = 2 << (this.addressWidth - 1);
             width = this.dataWidth;
+        }
+
+        public bool ParseHexFileLine(int lineNumber, string hexLine, out int address, out byte[] data, out bool done)
+        {
+            // to be returned
+            address = 0;
+            data = null;
+            done = false;
+            // internal
+            int pos = -1;
+            int checksum = 0;
+            int count = 0;
+            int recType = 0;
+            int byteValue = 0;
+            int aLo = 0;
+            int aHi = 0;
+
+            foreach(char c in hexLine)
+            {
+                switch (c)
+                {
+                    case ' ':
+                        break;
+                    case ':':
+                        if (pos >= 0)
+                        {
+                            logger.WriteLine($"Warning in line {lineNumber}: unexpected character '{c}' found");
+                            return false;
+                        }
+                        pos++;
+                        break;
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                    case 'a':
+                    case 'b':
+                    case 'c':
+                    case 'd':
+                    case 'e':
+                    case 'f':
+                        switch (pos)
+                        {
+                            case 0:
+                                count = HexChar2Val[c];
+                                break;
+                            case 1:
+                                count = (count << 4) + HexChar2Val[c];
+                                if (count > 32)
+                                {
+                                    logger.WriteLine($"Warning in line {lineNumber}: count of '{count}' bytes exceeds limit of 32");
+                                    return false;
+                                }
+                                else
+                                {
+                                    checksum += count;
+                                    data = new byte[count];
+                                }
+                                break;
+                            case 2:
+                                aHi = HexChar2Val[c];
+                                break;
+                            case 3:
+                                aHi = (aHi << 4) + HexChar2Val[c];
+                                checksum += aHi;
+                                break;
+                            case 4:
+                                aLo = HexChar2Val[c];
+                                break;
+                            case 5:
+                                aLo = (aLo << 4) + HexChar2Val[c];
+                                checksum += aLo;
+                                address = (aHi << 8) + aLo;
+                                break;
+                            case 6:
+                                recType = HexChar2Val[c];
+                                break;
+                            case 7:
+                                recType = (recType << 4) + HexChar2Val[c];
+                                if (recType == 1)
+                                {
+                                    // last record type
+                                    done = true;
+                                    return (address == 0);
+                                }
+                                if (recType != 0)
+                                {
+                                    // not a regular data record
+                                    logger.WriteLine($"Warning in line {lineNumber}: record type {recType} not supported");
+                                    return false;
+                                }
+                                checksum += recType;
+                                break;
+                            default:
+                                if ((pos & 1) == 0) // odd position
+                                {
+                                    // high nibble of a byte
+                                    byteValue = HexChar2Val[c];
+                                }
+                                else                // even position
+                                {
+                                    // low nibble of a byte
+                                    byteValue = (byteValue << 4) + HexChar2Val[c];
+                                    if ((pos - 8) > (count << 1))
+                                    {
+                                        //  this is now the checksum byte, so check against accumulated value
+                                        checksum = -checksum; // 2's complement
+                                        if (byteValue != (checksum & 255))
+                                        {
+                                            logger.WriteLine($"Warning in line {lineNumber}: checksum calculated is {checksum & 255}, expected {byteValue}");
+                                            return false;
+                                        }
+                                        else
+                                        {
+                                            return true; // all fine!
+                                        }
+                                    }
+                                    else
+                                    { 
+                                        checksum += byteValue;
+                                        data[(pos - 8) >> 1] = (byte) byteValue;
+                                    }
+                                }
+                                break;
+                        }
+                        pos++;
+                        break;
+                    default:
+                        logger.WriteLine($"Warning in line {lineNumber}: unexpected character '{c}' found");
+                        return false;
+                }
+            }
+            return true;
         }
 
         public int Generate(bool allowUninitialized, List<MicroField> fields, bool isConversion)

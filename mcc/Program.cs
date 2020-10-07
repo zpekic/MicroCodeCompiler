@@ -83,30 +83,84 @@ namespace mcc
             int wordWidth = 8;
             int recordWidth = 16;
             string targetName = sourceFileName.Replace(sourceExtension, string.Empty);
+            string content, rawLine, data;
+            byte[] byteData;
             Mapper mapper = null;
+            int errorCounter = 0;
+            int address;
+            bool isLastRecord;
+            bool allowUninitialized = false;
 
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
 
+            if (args.Length > 1)
+            {
+                Assert(int.TryParse(args[1], out addressWidth), "Address width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                Assert((addressWidth >= 0) && (addressWidth <= 16), "Address width out of expected range 0 (auto) .. 16");
+                if (args.Length > 2)
+                {
+                    Assert(int.TryParse(args[2], out wordWidth), "Word width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                    Assert((wordWidth == 8) || (wordWidth == 16) || (wordWidth == 32), "Word width must be 8, 16 or 32");
+                    if (args.Length > 3)
+                    {
+                        Assert(int.TryParse(args[3], out recordWidth), "Record width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
+                        Assert((recordWidth == 1) || (recordWidth == 2) || (recordWidth == 4) || (recordWidth == 8) || (recordWidth == 16), "Record width must be 1, 2, 4, 8 or 16");
+                    }
+                }
+            }
+
             switch (sourceExtension)
             {
-                case ".bin":
-                    logger.WriteLine($"Converting binary file '{sourceFileName}' to other formats");
+                case ".hex":
+                    logger.WriteLine($"Converting hex file '{sourceFileName}' to other formats");
 
-                    if (args.Length > 1)
+                    //Assert(addressWidth == 16, $"Only address width of 16 is supported for .hex file ({addressWidth} detected)");
+
+                    content = $"{addressWidth}, {wordWidth}, {targetName}.coe, {targetName}.mif, {targetName}.cgf, mem:{targetName}.vhd, {targetName}.bin, {recordWidth};";
+                    mapper = new Mapper(1, -1, string.Empty, content, logger);
+                    ((ParsedLine)mapper).Pass1();
+
+                    sourceFile = new System.IO.StreamReader(sourceFileName);
+                    while ((rawLine = sourceFile.ReadLine()) != null)
                     {
-                        Assert(int.TryParse(args[1], out addressWidth), "Address width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                        Assert((addressWidth >= 0) && (addressWidth <= 16), "Address width out of expected range 0 (auto) .. 16");
-                        if (args.Length > 2)
+                        lineCounter++;
+
+                        string hexLine = rawLine.Trim();
+                        if (!string.IsNullOrEmpty(hexLine))
                         {
-                            Assert(int.TryParse(args[2], out wordWidth), "Word width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                            Assert((wordWidth == 8) || (wordWidth == 16) || (wordWidth == 32), "Word width must be 8, 16 or 32");
-                            if (args.Length > 3)
+                            if (mapper.ParseHexFileLine(lineCounter, hexLine.ToLowerInvariant(), out address, out byteData, out isLastRecord))
                             {
-                                Assert(int.TryParse(args[3], out recordWidth), "Record width missing or invalid (command line format: file.bin addresswidth wordwidth recordwidth)");
-                                Assert((recordWidth == 1) || (recordWidth == 2) || (recordWidth == 4) || (recordWidth == 8) || (recordWidth == 16), "Record width must be 1, 2, 4, 8 or 16");
+                                if (isLastRecord)
+                                {
+                                    logger.WriteLine($"Last record found at line {lineCounter} reading '{sourceFileName}', all subsequent lines are ignored");
+                                    break;
+                                }
+                                else
+                                {
+                                    mapper.Write(address, byteData, sourceFileName, hexLine, lineCounter, "hex");
+                                }
+                            }
+                            else
+                            {
+                                errorCounter++;
                             }
                         }
                     }
+                    sourceFile.Close();
+
+                    if (errorCounter > 0)
+                    {
+                        logger.WriteLine($"Warning: {lineCounter.ToString()} line(s) read from '{sourceFileName}', {errorCounter} error lines found (output is probably invalid).");
+                    }
+                    else
+                    {
+                        logger.WriteLine($"Success: {lineCounter.ToString()} line(s) read from '{sourceFileName}', no error lines.");
+                    }
+                    allowUninitialized = true;
+                    break;
+
+                case ".bin":
+                    logger.WriteLine($"Converting binary file '{sourceFileName}' to other formats");
 
                     byte[] fileBytes = File.ReadAllBytes(sourceFileName);
 
@@ -122,15 +176,15 @@ namespace mcc
 
                     Assert(fileBytes.Length == (wordWidth >> 3) * (1 << addressWidth), $"Count of bytes in file ({fileBytes.Length}) not matching expected count of ({1 << addressWidth} * {wordWidth >> 3})");
 
-                    string content = $"{addressWidth}, {wordWidth}, {targetName}.coe, {targetName}.mif, {targetName}.cgf, mem:{targetName}.vhd, {targetName}.hex, {recordWidth};";
+                    content = $"{addressWidth}, {wordWidth}, {targetName}.coe, {targetName}.mif, {targetName}.cgf, mem:{targetName}.vhd, {targetName}.hex, {recordWidth};";
                     mapper = new Mapper(1, -1, string.Empty, content, logger);
                     ((ParsedLine)mapper).Pass1();
 
                     // write bytes into mapper
-                    for (int address = 0; address < fileBytes.Length; address += (wordWidth >> 3))
+                    for (address = 0; address < fileBytes.Length; address += (wordWidth >> 3))
                     {
                         string extraComment = string.Format("{0:X4}: ", address);
-                        string data = "";
+                        data = "";
 
                         for (int i = 0; i < (wordWidth >> 3); i++)
                         {
@@ -147,7 +201,7 @@ namespace mcc
             }
 
             // Generate all the destination files
-            int outputFileCount = Generate((MemBlock)mapper, false, "Generating: ", null, true);
+            int outputFileCount = Generate((MemBlock)mapper, allowUninitialized, "Generating: ", null, true);
 
             logger.WriteLine($"Success: Conversion - {outputFileCount.ToString()} file(s) generated.");
         }
