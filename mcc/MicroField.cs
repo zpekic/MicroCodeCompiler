@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace mcc
 {
@@ -240,6 +241,13 @@ namespace mcc
             Assert(GetValueAndMask(defaultValue, out this.DefaultValue, out mask, null), $"Default value '{defaultValue}' could not be resolved");
             Assert(mask == 0, "Mask not allowed in default value");
             this.DefaultValue = CheckRange(this.DefaultValue);
+        }
+
+        public virtual StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        {
+            StringBuilder sbCode = new StringBuilder("-- TODO (no sample code provided)");
+
+            return sbCode;
         }
 
         public int FindValue(string token, Dictionary<string, int> targets, int sourceLine)

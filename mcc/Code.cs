@@ -40,12 +40,20 @@ namespace mcc
             return 1;
         }
 
+        public static string GetFieldLabel(MicroField mf)
+        {
+            //Assert(mf != null && !string.IsNullOrEmpty(mf.Label), "Undefined field label");
+
+            return mf.Label;
+        }
+
         protected string GetVhdFields(string prefix, List<MicroField> fields, out string defaultMicroinstruction)
         {
             Assert(fields != null && (fields.Count > 0), "Can't generate code - no microcode fields defined");
 
             StringBuilder sbFields = new StringBuilder();
             StringBuilder sbDefault = new StringBuilder();
+            List<string> fieldLabels = fields.ConvertAll(new System.Converter<MicroField, string>(GetFieldLabel));
             foreach (MicroField field in fields)
             {
                 sbDefault.Append(GetBinaryString(field.DefaultValue, field.Width));
@@ -67,6 +75,12 @@ namespace mcc
                 {
                     sbFields.AppendLine(vv.GetVhdLine(field, field is FieldIf));
                 }
+
+                // attempt to create VHDL code for lazy copy/pasting
+                StringBuilder sbCode = field.GetVhdlBoilerplateCode(prefix, fieldLabels);
+                sbFields.Append(sbCode);
+
+                sbFields.AppendLine();
                 sbFields.AppendLine();
             }
 
