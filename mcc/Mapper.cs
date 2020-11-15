@@ -9,7 +9,7 @@ namespace mcc
         public int Depth; // must be 2^n
         public int Width; // must be >0
 
-        public Mapper(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public Mapper(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".mapper", lineNumber, orgValue, label, content, logger)
         {
             this.Depth = -1;
             this.Width = -1;

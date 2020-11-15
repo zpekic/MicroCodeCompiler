@@ -6,7 +6,7 @@ namespace mcc
 {
     internal class Code : MemBlock
     {
-        public Code(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public Code(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".code", lineNumber, orgValue, label, content, logger)
         {
         }
 

@@ -12,7 +12,7 @@ namespace mcc
         protected List<string> outputFiles = new List<string>();
         protected int stackDepth;
 
-        public Controller(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public Controller(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".controller", lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
         }

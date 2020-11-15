@@ -5,7 +5,7 @@
         public int Value;
         public int Mask;
 
-        public Map(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public Map(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".map", lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue > 0, "Can't map as .org not set");
         }

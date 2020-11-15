@@ -28,7 +28,7 @@ namespace mcc
             }
         }
 
-        public MemBlock(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public MemBlock(string statement, int lineNumber, int orgValue, string label, string content, Logger logger) : base(statement, lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
         }

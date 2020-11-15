@@ -8,7 +8,7 @@ namespace mcc
 {
     internal class Org : ParsedLineWithNoLabel
     {
-        public Org(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public Org(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".org", lineNumber, orgValue, label, content, logger)
         {
         }
 

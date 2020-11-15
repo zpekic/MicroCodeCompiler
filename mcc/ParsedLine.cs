@@ -8,6 +8,7 @@ namespace mcc
 {
     internal abstract class ParsedLine
     {
+        private string statement;
         public int LineNumber;
         public int OrgValue;
         public string Label;
@@ -46,8 +47,9 @@ namespace mcc
             {'F', 15}
         };
 
-        public ParsedLine(int lineNumber, int orgValue, string label, string content, Logger logger)
+        public ParsedLine(string statement, int lineNumber, int orgValue, string label, string content, Logger logger)
         {
+            this.statement = statement;
             this.LineNumber = lineNumber;
             this.OrgValue = orgValue;
             this.Label = label.TrimEnd(new char[] { ':' });
@@ -74,6 +76,7 @@ namespace mcc
             }
             else
             {
+                this.Content += " ";
                 this.Content += moreContent;
                 if (moreContent.EndsWith(";"))
                 {
@@ -409,6 +412,7 @@ namespace mcc
             sbLine.Append(OrgValue < 0 ? "." : $"@{OrgValue:X4}.");
             sbLine.Append(string.IsNullOrEmpty(Label) ? " " : $"{Label}: ");
 
+            sbLine.Append($"{statement} ");
             sbLine.Append(Content);
 
             return sbLine.ToString();

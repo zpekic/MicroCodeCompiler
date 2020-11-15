@@ -15,7 +15,7 @@ namespace mcc
         private string value_then = string.Empty;
         private string value_else = string.Empty;
 
-        public MicroInstruction(int lineNumber, int orgValue, string label, string content, List<ParsedLine> parsedLines, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public MicroInstruction(int lineNumber, int orgValue, string label, string content, List<ParsedLine> parsedLines, Logger logger) : base("", lineNumber, orgValue, label, content, logger)
         {
             this.ParsedLines = parsedLines;
         }

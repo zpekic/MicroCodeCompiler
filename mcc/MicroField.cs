@@ -130,7 +130,7 @@ namespace mcc
             }
         }
 
-        public MicroField(int lineNumber, int orgValue, string label, string content, Logger logger) : base(lineNumber, orgValue, label, content, logger)
+        public MicroField(string statement, int lineNumber, int orgValue, string label, string content, Logger logger) : base(statement, lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
 
@@ -243,9 +243,49 @@ namespace mcc
             this.DefaultValue = CheckRange(this.DefaultValue);
         }
 
+        protected bool HasNamedValues()
+        {
+            foreach (ValueVector vv in Values)
+            {
+                if (!string.IsNullOrEmpty(vv.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        protected string GuessVhdlExpressionFromName(string fieldName, string valueName, List<string> fieldLabels)
+        {
+            if (valueName.StartsWith("zero", System.StringComparison.InvariantCultureIgnoreCase) || valueName.StartsWith("clear", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"(others => '0')";
+            }
+            if (valueName.StartsWith("inc", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"std_logic_vector(unsigned({fieldName}) + 1)";
+            }
+            if (valueName.StartsWith("dec", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"std_logic_vector(unsigned({fieldName}) - 1)";
+            }
+            if (valueName.StartsWith("neg", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"{fieldName} xor (others => '1')";
+            }
+            if (valueName.StartsWith("com", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"std_logic_vector(unsigned({fieldName} xor (others => '1')) + 1)";
+            }
+
+            string foundLabel = fieldLabels.Find(fl => string.Equals(fl, valueName, System.StringComparison.InvariantCultureIgnoreCase));
+            return string.IsNullOrEmpty(foundLabel) ? valueName : foundLabel;
+        }
+
         public virtual StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
         {
-            StringBuilder sbCode = new StringBuilder("-- TODO (no sample code provided)");
+            StringBuilder sbCode = new StringBuilder("-- (no sample code provided)");
 
             return sbCode;
         }
