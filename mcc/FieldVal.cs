@@ -49,6 +49,7 @@ namespace mcc
                 {
                     bool appendOthers = false;
                     int count = 0;
+                    string defaultExpression = null;
                     sbCode.AppendLine($"-- with {prefix}_{Label} select {Label} <=");
 
                     foreach (ValueVector vv in Values)
@@ -60,8 +61,15 @@ namespace mcc
                         }
                         else
                         {
-                            sbCode.Append($"--      {GuessVhdlExpressionFromName(Label, vv.Name, fieldLabels)} when {prefix}_{vv.Name}");
-                            bool isDefault = vv.Match(this.DefaultValue);
+                            string expression = GuessVhdlExpressionFromName(Label, vv.Name, fieldLabels);
+                            bool isDefault = false;
+
+                            sbCode.Append($"--      {expression} when {Label}_{vv.Name}");
+                            if (vv.Match(this.DefaultValue))
+                            {
+                                isDefault = true;
+                                defaultExpression = expression;
+                            }
                             if (!appendOthers && (count == Values.Count))
                             {
                                 sbCode.AppendLine(isDefault ? "; -- default value" : ";");
@@ -75,7 +83,14 @@ namespace mcc
 
                     if (appendOthers)
                     {
-                        sbCode.AppendLine("--      null when others;");
+                        if (string.IsNullOrEmpty(defaultExpression))
+                        {
+                            sbCode.AppendLine("--      (others => '0') when others;");
+                        }
+                        else
+                        {
+                            sbCode.AppendLine($"--      {defaultExpression} when others;");
+                        }
                     }
 
                 }

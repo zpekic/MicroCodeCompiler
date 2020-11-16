@@ -276,7 +276,7 @@ namespace mcc
             }
             if (valueName.StartsWith("com", System.StringComparison.InvariantCultureIgnoreCase))
             {
-                return $"std_logic_vector(unsigned({fieldName} xor (others => '1')) + 1)";
+                return $"std_logic_vector(unsigned(not {fieldName}) + 1)";
             }
 
             string foundLabel = fieldLabels.Find(fl => string.Equals(fl, valueName, System.StringComparison.InvariantCultureIgnoreCase));

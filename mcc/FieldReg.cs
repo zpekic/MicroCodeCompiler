@@ -72,7 +72,7 @@ namespace mcc
             {
                 sbCode.AppendLine($"--  {Label} <= {prefix}_{Label};");
             }
-            sbCode.AppendLine("-- end;");
+            sbCode.AppendLine("-- end if;");
             sbCode.AppendLine("-- end process;");
 
             sbCode.Append("---- End boilerplate code");
