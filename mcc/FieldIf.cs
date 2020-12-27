@@ -6,7 +6,7 @@ namespace mcc
     internal class FieldIf : MicroField
     {
 
-        public FieldIf(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".if", lineNumber, orgValue, label, content, logger)
+        public FieldIf(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".if", lineNumber, orgValue, label, content, logger, null)
         {
         }
 

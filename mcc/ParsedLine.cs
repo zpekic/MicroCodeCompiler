@@ -200,13 +200,13 @@ namespace mcc
                                 }
                                 else
                                 {
-                                    return false;
+                                    return TryFloat(input, out value);
                                 }
                                 break;
                             case 8:
                                 if ((c == '8') || (c == '9'))
                                 {
-                                    return false;
+                                    return TryFloat(input, out value);
                                 }
                                 else
                                 { 
@@ -224,7 +224,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case 'a':
@@ -250,7 +250,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case 'A':
@@ -276,7 +276,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case '?':
@@ -294,7 +294,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case '_':
@@ -310,7 +310,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case 'o':
@@ -331,7 +331,7 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     case '\'':
@@ -363,7 +363,7 @@ namespace mcc
                                 }
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                     default:
@@ -374,12 +374,27 @@ namespace mcc
                                 value = value * 256 + (int)c;
                                 break;
                             default:
-                                return false;
+                                return TryFloat(input, out value);
                         }
                         break;
                 }
             }
             return true;
+        }
+
+        private bool TryFloat(string input, out int value)
+        {
+            float f;
+            value = 0;
+
+            if (float.TryParse(input, out f))
+            {
+                // get the bytes representing the FP value, and return them as if they were an integer
+                value = BitConverter.ToInt32(BitConverter.GetBytes(f), 0);
+                return true;
+            }
+
+            return false;
         }
 
         public static bool Split3(string source, string token, out string beforeToken, out string afterToken)

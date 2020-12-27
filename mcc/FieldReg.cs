@@ -5,7 +5,7 @@ namespace mcc
 {
     internal class FieldReg : MicroField
     {
-        public FieldReg(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".regfield", lineNumber, orgValue, label, content, logger)
+        public FieldReg(int lineNumber, int orgValue, string label, string content, Logger logger, List<ParsedLine> parsedLines) : base(".regfield", lineNumber, orgValue, label, content, logger, parsedLines)
         {
 
         }

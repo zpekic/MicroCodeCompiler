@@ -234,7 +234,7 @@ namespace mcc
                     // .org is always on one line and just sets the value, line is not preserved
                     if (ParsedLine.Split3(rawLine, ".org", out label, out content))
                     {
-                        Assert(string.IsNullOrEmpty(label), "Label not allowed on .org.");
+                        Assert(string.IsNullOrEmpty(label), "Label not allowed on .org");
                         //Assert(GetMemorySize(parsedLines.Single(pl => pl.GetType().ToString() == "Code"), out microcodeDepth, out microcodeWidth), ".code size not yet defined");
                         //Assert(GetMemorySize(code, out microcodeDepth, out microcodeWidth), ".code size not yet defined");
                         //Assert((newValue > 0) && (newValue < microcodeDepth), string.Format(".org value of '{0}' out of allowed range 0 .. {1}.", newValue.ToString(), (microcodeDepth - 1).ToString()));
@@ -259,7 +259,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".code", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".code outside definition section.");
+                        Assert(!inImplementationSection, ".code outside definition section");
 
                         Code code = new Code(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine) code;
@@ -272,7 +272,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".mapper", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".mapper outside definition section.");
+                        Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Mapper mapper = new Mapper(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
@@ -285,7 +285,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".controller", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".mapper outside definition section.");
+                        Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Controller controller = new Controller(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
@@ -298,7 +298,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".map", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(inImplementationSection, ".map outside implementation section.");
+                        Assert(inImplementationSection, ".map outside implementation section");
 
                         Map map = new Map(lineCounter, orgValue, label, content, logger);
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)map;
@@ -311,7 +311,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".if", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".if outside definition section.");
+                        Assert(!inImplementationSection, ".if outside definition section");
 
                         FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fi.SetRange(GetLeftPos(fieldLeftPos));
@@ -326,7 +326,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".then", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".then outside definition section.");
+                        Assert(!inImplementationSection, ".then outside definition section");
 
                         FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = ft.SetRange(GetLeftPos(fieldLeftPos));
@@ -340,7 +340,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".else", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".else outside definition section.");
+                        Assert(!inImplementationSection, ".else outside definition section");
 
                         FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, logger);
                         //fieldLeftPos = fe.SetRange(GetLeftPos(fieldLeftPos));
@@ -356,7 +356,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".regfield outside definition section.");
 
-                        FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, logger);
+                        FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, logger, parsedLines);
                         //fieldLeftPos = fr.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fr;
                         continuationLine = ((ParsedLine) fr).Pass1();
@@ -370,7 +370,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
-                        FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, logger);
+                        FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, logger, parsedLines);
                         //fieldLeftPos = fv.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fv;
                         continuationLine = ((ParsedLine) fv).Pass1();

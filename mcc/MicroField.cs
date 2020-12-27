@@ -11,6 +11,8 @@ namespace mcc
         public int Lo;
         public int DefaultValue;
         public List<ValueVector> Values = new List<ValueVector>();
+        public List<MicroField> OverlappingFields = new List<MicroField>();
+        private List<ParsedLine> ParsedLines;
 
         private int MaxValue;
 
@@ -130,10 +132,10 @@ namespace mcc
             }
         }
 
-        public MicroField(string statement, int lineNumber, int orgValue, string label, string content, Logger logger) : base(statement, lineNumber, orgValue, label, content, logger)
+        public MicroField(string statement, int lineNumber, int orgValue, string label, string content, Logger logger, List<ParsedLine> parsedLines) : base(statement, lineNumber, orgValue, label, content, logger)
         {
             Assert(orgValue < 0, "Definition statement must precede .org");
-
+            this.ParsedLines = parsedLines;
         }
 
         public int SetRange(int start)
@@ -145,15 +147,29 @@ namespace mcc
                 // regular field width, start with 
                 this.Hi = start;
                 this.Lo = start - this.Width + 1;
-                logger.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
+                logger.WriteLine($"Field '{Label}' {Hi.ToString()} .. {Lo.ToString()}");
                 return this.Lo - 1;
             }
             else
             {
-                // negative width means overlaps with previous field
-                this.Hi = start + this.Width - 1;
-                this.Lo = start + 1;
-                logger.WriteLine(string.Format("Field '{0}' {1} .. {2}", Label, Hi.ToString(), Lo.ToString()));
+                // negative width means overlaps with previous field(s)
+                StringBuilder overlapList = new StringBuilder();
+                this.Hi = 0;
+                this.Lo = int.MaxValue;
+
+                foreach(MicroField mf in OverlappingFields)
+                {
+                    if (overlapList.Length > 0)
+                    {
+                        overlapList.Append(", ");
+                    }
+                    // the assumption here is that overlapping fields are contiguous
+                    this.Hi = Math.Max(this.Hi, mf.Hi);
+                    this.Lo = Math.Min(this.Lo, mf.Lo);
+                    overlapList.Append(mf.Label);
+                }
+                Assert((this.Lo - this.Hi - 1 ) == this.Width, $"Field '{Label}': length mismatch (from {this.Hi} down to {this.Lo} does not cover {this.Width} positions");
+                logger.WriteLine($"Field '{Label}' {Hi.ToString()} .. {Lo.ToString()} overlaps with: {overlapList.ToString()}");
                 return start;
             }
         }
@@ -172,9 +188,59 @@ namespace mcc
             Assert(!string.IsNullOrEmpty(widthOrLoHi), "Missing microfield width or span");
             Assert(!string.IsNullOrEmpty(values), "Missing microfield value(s)");
 
-            // for now only support integer width. Negative means overlap with previous field, 0 is not allowed
-            Assert(int.TryParse(widthOrLoHi, out this.Width), "Width must be an integer");
-            Assert(this.Width != 0, "Width is zero");
+            // for now only support integer width. Negative means overlap with other fields, 0 is not allowed
+            if (int.TryParse(widthOrLoHi, out this.Width))
+            {
+                Assert(this.Width > 0, "Invalid field width: must be an integer > 0, or specify a <fromfield> [.. <tofield>] span of previously defined field(s) for overlap");
+            }
+            else
+            {
+                string fromFieldLabel = null, toFieldLabel = null;
+                MicroField fromField = null, toField = null;
+
+                Assert(!string.IsNullOrEmpty(widthOrLoHi), "Missing field width: must be an integer > 0, or specify a <fromfield> [.. <tofield>] of previously defined field(s) for overlap");
+                Split3(widthOrLoHi, "..", out fromFieldLabel, out toFieldLabel);
+
+                foreach(ParsedLine pl in ParsedLines)
+                {
+                    MicroField currentField = pl as MicroField;
+                    if (currentField != null)
+                    {
+                        if (fromField == null)
+                        {
+                            if (currentField.Label.Equals(fromFieldLabel, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                fromField = currentField;
+                                fromField.OverlappingFields.Add(this);
+                                this.OverlappingFields.Add(fromField);
+                                this.Width = fromField.Width;
+                                if (string.IsNullOrEmpty(toFieldLabel) || toFieldLabel.Equals(fromFieldLabel, StringComparison.InvariantCultureIgnoreCase))
+                                {
+                                    toFieldLabel = fromFieldLabel;
+                                    toField = currentField;
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            currentField.OverlappingFields.Add(this);
+                            this.OverlappingFields.Add(currentField);
+                            this.Width += currentField.Width;
+                            if (currentField.Label.Equals(toFieldLabel, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                toField = currentField;
+                                break;
+                            }
+                        }
+                    }
+                }
+                CheckOverlapField(fromField, fromFieldLabel);
+                CheckOverlapField(toField, toFieldLabel);
+
+                this.Width = - this.Width; // should be negative to indicate overlapping field
+                Assert(this.Width < 0, "Bad field width");
+            }
             this.MaxValue = (1 << Math.Abs(this.Width)) - 1;
 
             // populate the values table
@@ -346,6 +412,13 @@ namespace mcc
 
             Assert(true, string.Format("Invalid value for '{0}' (call from line {1})", Label, sourceLine.ToString()));
             return DefaultValue; // this should never really be returned here 
+        }
+
+        private void CheckOverlapField(MicroField field, string fieldLabel)
+        {
+            Assert(field != null, $"Field '{fieldLabel}' not found when defining field overlap");
+            Assert(!(field is FieldIf), $"Field '{fieldLabel}': overlap with .if not supported");
+            Assert(!(field is FieldThen), $"Field '{fieldLabel}': overlap with .if not supported");
         }
 
         private int CheckRange(int value)

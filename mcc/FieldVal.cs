@@ -8,7 +8,7 @@ namespace mcc
         public int From;
         public int To;
 
-        public FieldVal(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".valfield", lineNumber, orgValue, label, content, logger)
+        public FieldVal(int lineNumber, int orgValue, string label, string content, Logger logger, List<ParsedLine> parsedLines) : base(".valfield", lineNumber, orgValue, label, content, logger, parsedLines)
         {
             this.From = -1;
             this.To = -1;
