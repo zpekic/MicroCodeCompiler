@@ -14,7 +14,8 @@ namespace mcc
         private string value_if = string.Empty;
         private string value_then = string.Empty;
         private string value_else = string.Empty;
-
+        private static ParsedLine[] aliasLines;
+        
         public struct FieldData
         {
             public string Label;
@@ -247,8 +248,10 @@ namespace mcc
         {
             List<string> resolved = new List<string>();
 
-            ParsedLine[] aliasLines = ParsedLines.FindAll(pl => pl.GetType().ToString() == "mcc.Alias").ToArray();
-
+            if (aliasLines == null)
+            {
+                aliasLines = ParsedLines.FindAll(pl => pl.GetType().ToString() == "mcc.Alias").ToArray();
+            }
             // aliases are supposed to be compouding, so expand them in opposite order
             for (int pl = aliasLines.Length - 1; pl >= 0; pl--)
             {

@@ -10,6 +10,7 @@ namespace mcc
         public int Hi;
         public int Lo;
         public int DefaultValue;
+        public int ResetValue;
         public List<ValueVector> Values = new List<ValueVector>();
         public List<MicroField> OverlappingFields = new List<MicroField>();
         private List<ParsedLine> ParsedLines;
@@ -101,7 +102,7 @@ namespace mcc
                             {
                                 if (isIfField)
                                 {
-                                    return $"constant {current.Label}_{Name}: \tinteger := {this.To};";
+                                    return (allowed ? "" : "--") + $"constant {current.Label}_{Name}: \tinteger := {this.To};";
                                 }
                                 else
                                 {
@@ -178,7 +179,7 @@ namespace mcc
         {
             base.ParseContent();
 
-            string widthOrLoHi, values, defaultValue;
+            string widthOrLoHi, values, defaultValue, resetValue;
             int mask;
 
             // parse out the content
@@ -292,6 +293,35 @@ namespace mcc
             }
 
             Assert(this.Values.Count <= (this.MaxValue + 1), "Too many distinct values (or extra commas) detected");
+
+            // reset value is only recognized for register fields!
+            resetValue = null;
+            this.ResetValue = -1;
+            if (this is FieldReg)
+            {
+                Split3(defaultValue, "reset", out defaultValue, out resetValue);
+                if (!string.IsNullOrEmpty(resetValue))
+                {
+                    // first try to find in named values
+                    foreach (ValueVector vv in this.Values)
+                    {
+                        if (resetValue.Equals(vv.Name, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            // found a "named" value
+                            this.ResetValue = vv.From;
+                            break;
+                        }
+                    }
+
+                    // if not found, try to evaluate
+                    if (this.ResetValue < 0)
+                    {
+                        Assert(GetValueAndMask(resetValue, out this.ResetValue, out mask, null), $"Reset value '{defaultValue}' could not be resolved");
+                        Assert(mask == 0, "Mask not allowed in reset value");
+                        this.ResetValue = CheckRange(this.ResetValue);
+                    }
+                }
+            }
 
             // find the default value
             foreach (ValueVector vv in this.Values)

@@ -98,7 +98,7 @@ namespace mcc
                 switch (i)
                 {
                     case 0:
-                        stack_push += $"\t\t\t\t\t\tuPC{i} <= ui_nextinstr;\r\n";
+                        stack_push += $"\t\t\t\tuPC{i} <= ui_nextinstr;\r\n";
                         break;
                     case 1:
                         stack_push += $"\t\t\t\t\t\tuPC1 <= std_logic_vector(unsigned(uPC0) + 1);\r\n";
@@ -170,7 +170,7 @@ namespace mcc
                 sb.AppendLine("constant zero: std_logic_vector(31 downto 0) := X\"00000000\";");
                 sb.AppendLine();
                 sb.AppendLine("signal [STACK_DEF]: std_logic_vector(CODE_DEPTH - 1 downto 0);");
-                sb.AppendLine("signal condition, push_then_jump: std_logic;");
+                sb.AppendLine("signal condition, push, jump: std_logic;");
                 sb.AppendLine();
                 sb.AppendLine("begin");
                 sb.AppendLine();
@@ -181,7 +181,9 @@ namespace mcc
                 sb.AppendLine("-- select next instruction based on condition");
                 sb.AppendLine("ui_nextinstr <= seq_then when (condition = '1') else seq_else;");
                 sb.AppendLine("-- check if jump or one of 4 \"special\" instructions");
-                sb.AppendLine("push_then_jump <= '0' when (ui_nextinstr(CODE_DEPTH - 1 downto 2) = zero(CODE_DEPTH - 3 downto 0)) else '1';");
+                sb.AppendLine("jump <= '0' when (ui_nextinstr(CODE_DEPTH - 1 downto 2) = zero(CODE_DEPTH - 3 downto 0)) else '1';");
+                sb.AppendLine("-- push only if both branches are same");
+                sb.AppendLine("push <= '1' when (seq_then = seq_else) else '0';");
                 sb.AppendLine();
                 sb.AppendLine("sequence: process(reset, clk, push_then_jump, ui_nextinstr)");
                 sb.AppendLine("begin");
@@ -189,8 +191,12 @@ namespace mcc
                 sb.AppendLine("        uPC0 <= (others => '0');	-- reset clears top microcode program counter");
                 sb.AppendLine("	  else");
                 sb.AppendLine("       if (rising_edge(clk)) then");
-                sb.AppendLine("             if (push_then_jump = '1') then");
+                sb.AppendLine("             if (jump = '1') then");
+                sb.AppendLine("                  if (push = '1') then");
                 sb.AppendLine("[STACK_PUSH]");
+                sb.AppendLine("                  else");
+                sb.AppendLine("                     uPC0 <= ui_nextinstr;");
+                sb.AppendLine("                  end if;");
                 sb.AppendLine("             else");
                 sb.AppendLine("                 case (ui_nextinstr(1 downto 0)) is");
                 sb.AppendLine("                     when \"00\" =>	-- next");

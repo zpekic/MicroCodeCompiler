@@ -21,6 +21,18 @@ namespace mcc
             { "1000", "8"}, { "1001", "9"}, { "1010", "A"}, { "1011", "B"}, { "1100", "C"}, { "1101", "D"}, { "1110", "E"}, { "1111", "F"},
         };
 
+        protected Dictionary<string, string> Bin2Oct = new Dictionary<string, string>()
+        {
+            {"000", "0" },
+            {"001", "1" },
+            {"010", "2" },
+            {"011", "3" },
+            {"100", "4" },
+            {"101", "5" },
+            {"110", "6" },
+            {"111", "7" }
+        };
+
         protected Dictionary<char, int> HexChar2Val = new Dictionary<char, int>()
         {
             {'0', 0},
@@ -452,27 +464,17 @@ namespace mcc
             Assert((length > 0) && (length <= 32), "Field length must be between 0 and 32");
 
             string binary = Convert.ToString(value, 2);
-            Assert(binary.Length <= length, string.Format("Field length of {0} can't fit value {1}", length.ToString(), binary));
-            while (binary.Length < length)
+            if (binary.Length == length)
             {
-                binary = "0" + binary;
+                return binary;
             }
-
-            return binary;
+            Assert(binary.Length <= length, string.Format("Field length of {0} can't fit value {1}", length.ToString(), binary));
+            return binary.PadLeft(length, '0');
         }
 
         protected string GetVhdConstantFromBinaryString(string binary)
         {
             Assert(!string.IsNullOrEmpty(binary), "Constant length must be > 0");
-            if ((binary.Length % 4) == 0)
-            {
-                return $"X\"{GetHexFromBinary(binary, binary.Length)}\"";   // hex is the most compact
-            }
-
-            if ((binary.Length % 3) == 0)
-            {
-                return $"O\"{GetOctFromBinary(binary, binary.Length)}\"";   // octal is the most compact
-            }
 
             if (binary.Length == 1)
             {
@@ -480,6 +482,16 @@ namespace mcc
             }
             else
             {
+                if ((binary.Length % 4) == 0)
+                {
+                    return $"X\"{GetHexFromBinary(binary, binary.Length)}\"";   // hex is the most compact
+                }
+
+                if ((binary.Length % 3) == 0)
+                {
+                    return $"O\"{GetOctFromBinary(binary, binary.Length)}\"";   // octal is the most compact
+                }
+
                 return $"\"{binary}\""; // other length binary digits
             }
         }
@@ -542,36 +554,8 @@ namespace mcc
             for (int i = 0; i < (dataWidth / 3); i++)
             {
                 octet = binaryData.Substring(3 * i, 3);
-                switch (octet)
-                {
-                    case "000":
-                        octBuilder.Append("0");
-                        break;
-                    case "001":
-                        octBuilder.Append("1");
-                        break;
-                    case "010":
-                        octBuilder.Append("2");
-                        break;
-                    case "011":
-                        octBuilder.Append("3");
-                        break;
-                    case "100":
-                        octBuilder.Append("4");
-                        break;
-                    case "101":
-                        octBuilder.Append("5");
-                        break;
-                    case "110":
-                        octBuilder.Append("6");
-                        break;
-                    case "111":
-                        octBuilder.Append("7");
-                        break;
-                    default:
-                        Assert(false, $"Invalid octet '{octet}' detected");
-                        break;
-                }
+                Assert(Bin2Oct.ContainsKey(octet), $"Invalid octet '{octet}' detected");
+                octBuilder.Append(Bin2Oct[octet]);
             }
             return octBuilder.ToString();
         }

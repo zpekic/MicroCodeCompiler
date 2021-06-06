@@ -13,10 +13,33 @@ namespace mcc
         public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
         {
             StringBuilder sbCode = new StringBuilder();
+            bool includeReset = (this.ResetValue >= 0);
 
             sbCode.AppendLine("---- Start boilerplate code (use with utmost caution!)");
-            sbCode.AppendLine($"-- update_{Label}: process(clk, {prefix}_{Label})");
-            sbCode.AppendLine("-- begin");
+            if (includeReset)
+            {
+                sbCode.AppendLine($"-- update_{Label}: process(clk, {prefix}_{Label}, reset)");
+                sbCode.AppendLine("-- begin");
+                sbCode.AppendLine("--	if (reset = '1') then");
+
+                // try to figure out reset assignment?
+                string resetLine = $"--			{Label} <= TODO;";
+                foreach (ValueVector vv in Values)
+                {
+                    if (vv.Match(this.ResetValue))
+                    {
+                        resetLine = $"--		{Label} <= {GuessVhdlExpressionFromName(Label, vv.Name, fieldLabels)};";
+                        break;
+                    }
+                }
+                sbCode.AppendLine(resetLine);
+                sbCode.AppendLine("--	else");
+            }
+            else
+            {
+                sbCode.AppendLine($"-- update_{Label}: process(clk, {prefix}_{Label})");
+                sbCode.AppendLine("-- begin");
+            }
             sbCode.AppendLine("--	if (rising_edge(clk)) then");
 
             if (HasNamedValues())
@@ -71,6 +94,10 @@ namespace mcc
             else
             {
                 sbCode.AppendLine($"--  {Label} <= {prefix}_{Label};");
+            }
+            if (includeReset)
+            {
+                sbCode.AppendLine("-- end if;");
             }
             sbCode.AppendLine("-- end if;");
             sbCode.AppendLine("-- end process;");
