@@ -185,7 +185,7 @@ namespace mcc
                 sb.AppendLine("-- push only if both branches are same");
                 sb.AppendLine("push <= '1' when (seq_then = seq_else) else '0';");
                 sb.AppendLine();
-                sb.AppendLine("sequence: process(reset, clk, push_then_jump, ui_nextinstr)");
+                sb.AppendLine("sequence: process(reset, clk, push, jump, ui_nextinstr)");
                 sb.AppendLine("begin");
                 sb.AppendLine("   if (reset = '1') then");
                 sb.AppendLine("        uPC0 <= (others => '0');	-- reset clears top microcode program counter");

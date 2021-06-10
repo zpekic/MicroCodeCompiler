@@ -787,6 +787,8 @@ namespace mcc
                     sb.AppendLine();
                     sb.AppendLine("[SIGNAL]");
                     sb.AppendLine();
+                    sb.AppendLine("[INSTANCE]");
+                    sb.AppendLine();
                     sb.AppendLine("[FIELDS]");
                     sb.AppendLine();
                 }

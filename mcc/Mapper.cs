@@ -33,8 +33,9 @@ namespace mcc
                 template = template.Replace("[SIZES]", GetVhdlSizes("MAPPER", null));
                 template = template.Replace("[TYPE]", $"type {prefix}_mapper_memory is array(0 to {capacity - 1}) of std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[SIGNAL]", $"signal {prefix}_instructionstart: std_logic_vector({dataWidth - 1} downto 0);");
+                template = template.Replace("[INSTANCE]", $"--{prefix}_instructionstart <= {prefix}_mapper(to_integer(unsigned(TODO))); -- copy to file containing the control unit. TODO is typically the 'instruction_register'");
                 template = template.Replace("[MEMORY]", $"constant {prefix}_mapper: {prefix}_mapper_memory := ({GetVhdMemory(capacity, null, otherRanges)});");
-                template = template.Replace("[PLACEHOLDERS]", " [SIZES], [NAME], [TYPE], [SIGNAL], [MEMORY]");
+                template = template.Replace("[PLACEHOLDERS]", " [SIZES], [NAME], [TYPE], [INSTANCE], [SIGNAL], [MEMORY]");
                 vhdFile.WriteLine(template);
             }
 
