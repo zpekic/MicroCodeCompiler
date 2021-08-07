@@ -17,6 +17,10 @@ namespace mcc
             return sbCode;
         }
 
+        public override void CheckFieldWidth(int power2Width)
+        {
+            Assert((1 << this.Width) == power2Width, $".then field width {this.Width} not matching code size of {power2Width} microinstructions");
+        }
     }
 
 }

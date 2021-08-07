@@ -175,6 +175,11 @@ namespace mcc
             }
         }
 
+        public virtual void CheckFieldWidth(int power2Width)
+        {
+
+        }
+
         public override void ParseContent()
         {
             base.ParseContent();

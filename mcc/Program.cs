@@ -215,6 +215,9 @@ namespace mcc
             //Dictionary<string, Alias> aliases = new Dictionary<string, Alias>();
             //Dictionary<string, int> labelLine = new Dictionary<string, int>();
             //int fieldLeftPos = -1; // microinstruction word top bit position not yet initialized
+            MicroField checkFi = null;
+            MicroField checkFt = null;
+            MicroField checkFe = null;
 
             // Read the file and display it line by line.  
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
@@ -312,8 +315,10 @@ namespace mcc
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".if outside definition section");
+                        Assert(checkFi == null, ".if already defined");
 
                         FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, logger);
+                        checkFi = fi;
                         //fieldLeftPos = fi.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fi;
                         continuationLine = ((ParsedLine) fi).Pass1();
@@ -327,8 +332,10 @@ namespace mcc
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".then outside definition section");
+                        Assert(checkFt == null, ".then already defined");
 
                         FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, logger);
+                        checkFt = ft;
                         //fieldLeftPos = ft.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)ft;
                         continuationLine = ((ParsedLine) ft).Pass1();
@@ -341,8 +348,10 @@ namespace mcc
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".else outside definition section");
+                        Assert(checkFe == null, ".else already defined");
 
                         FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, logger);
+                        checkFe = fe;
                         //fieldLeftPos = fe.SetRange(GetLeftPos(fieldLeftPos));
                         //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fe;
                         continuationLine = ((ParsedLine) fe).Pass1();
@@ -445,10 +454,14 @@ namespace mcc
             }
             sourceFile.Close();
 
+            // it is weird (but conceivable) that if/then/else fields are not defined
+            CheckField(checkFi, ".if field not defined, code might not compile or work");
+            CheckField(checkFt, ".then field not defined, code might not compile or work");
+            CheckField(checkFe, ".else field not defined, code might not compile or work");
+
             logger.WriteLine($"Success: pass 1 {lineCounter.ToString()} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
         }
-
-
+        
         private static void Pass1(string sourceFileName)
         {
             Controller controller = null;
@@ -497,7 +510,7 @@ namespace mcc
                     Assert(mapper != null, ".mapper statement not defined");
                     Map map = (Map)pl;
                     Assert(map.OrgValue < codeDepth, string.Format(".map target of {0:X4} is beyond .code memory limit of {1:X4} .. {2:X4}", map.OrgValue, 0, codeDepth - 1));
-                    Assert(map.Value < mapDepth, string.Format(".map value of {0:X4} is beyond .mapper memory limit of {1:X4} .. {2:X4}", map.Value, 0, mapDepth - 1));
+                    Assert(map.ToValue < mapDepth, string.Format(".map value of {0:X4} is beyond .mapper memory limit of {1:X4} .. {2:X4}", map.ToValue, 0, mapDepth - 1));
                     map.Project((MemBlock) mapper, mapWidth);
                     continue;
                 }
@@ -508,6 +521,7 @@ namespace mcc
                     MicroField mf = (MicroField)pl;
                     fields.Add(mf);
                     fieldHiPos = mf.SetRange(fieldHiPos);
+                    mf.CheckFieldWidth(codeDepth);
                     continue;
                 }
 
@@ -548,6 +562,14 @@ namespace mcc
             Assert(!string.IsNullOrEmpty(label), "Invalid label");
             Assert(!labelLine.Keys.Contains(label), string.Format("Label '{0}' already defined", label));
             labelLine.Add(label, lineCounter);
+        }
+
+        private static void CheckField(MicroField mf, string warningMessage)
+        {
+            if (mf == null)
+            {
+                logger.WriteLine($"Warning: {warningMessage}");
+            }
         }
 
         private static void Assert(bool condition, string exceptionMessage)
