@@ -441,6 +441,7 @@ namespace mcc
 
             sbLine.Append($"{statement} ");
             sbLine.Append(Content);
+            sbLine.Append(";");
 
             return sbLine.ToString();
         }
@@ -494,6 +495,21 @@ namespace mcc
 
                 return $"\"{binary}\""; // other length binary digits
             }
+        }
+
+        protected int GetLog2(int value)
+        {
+            int singleBit = 1;
+            for (int i = 0; i < 16; i++)
+            {
+                if (singleBit == value)
+                {
+                    return i;
+                }
+                singleBit *= 2;
+            }
+
+            return -1;
         }
 
         protected string GetVhdConstant(int value, int length)

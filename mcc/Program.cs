@@ -272,6 +272,19 @@ namespace mcc
                         continue;
                     }
 
+                    if (ParsedLine.Split3(rawLine, ".symbol", out label, out content))
+                    {
+                        Assert(continuationLine == null, "Previous line not closed with ';'");
+                        Assert(!inImplementationSection, ".code outside definition section");
+
+                        Symbol symbol = new Symbol(lineCounter, orgValue, label, content, logger);
+                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine) code;
+                        continuationLine = ((ParsedLine) symbol).Pass1();
+                        parsedLines.Add(symbol);
+
+                        continue;
+                    }
+
                     if (ParsedLine.Split3(rawLine, ".mapper", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
@@ -475,6 +488,10 @@ namespace mcc
             int mapWidth = -1;
             int fieldHiPos = 0;
 
+            Symbol symbol = null;
+            int symbolDepth = -1;
+            int symbolWidth = -1;
+
             List<MicroField> fields = new List<MicroField>();
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 2 out of 2.");
@@ -493,6 +510,18 @@ namespace mcc
                     Assert(code == null, ".code statement already defined");
                     code = (Code)pl;
                     code.GetSize(out codeDepth, out codeWidth);
+                    continue;
+                }
+
+                if (pl is Symbol)
+                {
+                    Assert(symbol == null, ".symbol statement already defined");
+                    Assert(code != null, ".symbol statement defined before .code");
+                    symbol = (Symbol)pl;
+                    symbol.GetSize(out symbolDepth, out symbolWidth);
+                    Assert(codeDepth == symbolDepth, ".symbol depth must match code depth");
+                    Assert((symbolWidth % 8) == 0, ".symbol width must be multiple of 8 bits (8-bit ASCII chars are stored)");
+                    symbol.InitAll();
                     continue;
                 }
 
@@ -530,12 +559,17 @@ namespace mcc
                     Assert(fieldHiPos >= - 1, string.Format("Insufficient microcode width (extend by {0} bits)", (0 - fieldHiPos).ToString()));
                     MicroInstruction mi = (MicroInstruction)pl;
                     mi.Project((MemBlock)code, codeWidth, fields, labelOrg);
+                    if (symbol != null)
+                    {
+                        symbol.InitEntry(mi);
+                    }
                     continue;
                 }
             }
 
             int outputFileCount = Generate((MemBlock) code, true, "Generating code: ", fields, false);
             outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null, false);
+            outputFileCount += Generate((MemBlock)symbol, true, "Generating symbol: ", null, false);
             if (controller != null)
             {
                 outputFileCount += controller.GenerateFiles("Generating controller");

@@ -32,7 +32,7 @@ namespace mcc
                 template = template.Replace("[TYPE]", $"type {prefix}_code_memory is array(0 to {capacity - 1}) of std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[SIGNAL]", $"signal {prefix}_uinstruction: std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[INSTANCE]", $"--{prefix}_uinstruction <= {prefix}_microcode(to_integer(unsigned(TODO))); -- copy to file containing the control unit. TODO is typically replace with 'ui_address' control unit output");
-                template = template.Replace("[MEMORY]", $"constant {prefix}_microcode: {prefix}_code_memory := ({GetVhdMemory(capacity, defaultMicroinstruction, otherRanges)});");
+                template = template.Replace("[MEMORY]", $"constant {prefix}_microcode: {prefix}_code_memory := ({GetVhdMemory(capacity, defaultMicroinstruction, otherRanges, false)});");
                 template = template.Replace("[PLACEHOLDERS]", " [NAME], [FIELDS], [SIZES], [TYPE], [SIGNAL], [INSTANCE], [MEMORY]");
                 vhdFile.WriteLine(template);
             }

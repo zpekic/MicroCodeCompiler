@@ -329,7 +329,7 @@ namespace mcc
             return count;
         }
 
-        protected string GetVhdMemory(int capacity, string defaultMicroinstruction, string otherRanges)
+        protected string GetVhdMemory(int capacity, string defaultMicroinstruction, string otherRanges, bool longHex)
         {
             int generateOthers = 0;
             StringBuilder sb = new StringBuilder();
@@ -360,7 +360,7 @@ namespace mcc
                         }
                     }
                     sb.Append($"{address} => ");
-                    sb.Append(GetVhdDataFromBinaryString(memory[address].Data));
+                    sb.Append(GetVhdDataFromBinaryString(memory[address].Data, longHex));
                 }
                 else
                 {
@@ -375,28 +375,46 @@ namespace mcc
                 sb.AppendLine($"-- {generateOthers} location(s) in following ranges will be filled with default value");
                 sb.AppendLine(otherRanges);
                 sb.Append("others => ");
-                sb.AppendLine(GetVhdDataFromBinaryString(defaultMicroinstruction));
+                sb.AppendLine(GetVhdDataFromBinaryString(defaultMicroinstruction, longHex));
             }
 
             return sb.ToString();
         }
 
-        protected string GetVhdDataFromBinaryString(string binString)
+        protected string GetVhdDataFromBinaryString(string binString, bool longHex)
         {
             Assert(!string.IsNullOrEmpty(binString), "Microinstruction data not defined");
 
             StringBuilder sb = new StringBuilder();
             string[] chunks = binString.Split('_');
-            for (int i = 0; i < chunks.Length; i++)
+            if (longHex)
             {
-                sb.Append(GetVhdConstantFromBinaryString(chunks[i]));
-                if ((chunks.Length - i) > 1)
+                for (int i = 0; i < chunks.Length; i++)
                 {
-                    sb.Append(" & ");
+                    if (chunks[i].Length == 8)
+                    {
+                        sb.Append(GetHexFromBinary(chunks[i], 8));
+                    }
+                    sb.Append("_");
                 }
+                while (sb[sb.Length - 1] == '_')
+                {
+                    sb.Remove(sb.Length - 1, 1);
+                }
+                return $"X\"{sb.ToString()}\"";
             }
-
-            return sb.ToString();
+            else
+            {
+                for (int i = 0; i < chunks.Length; i++)
+                {
+                    sb.Append(GetVhdConstantFromBinaryString(chunks[i]));
+                    if ((chunks.Length - i) > 1)
+                    {
+                        sb.Append(" & ");
+                    }
+                }
+                return sb.ToString();
+            }
         }
 
         protected int GenerateBinFile(FileInfo outputFileInfo, bool bendian)
@@ -472,6 +490,8 @@ namespace mcc
                 case 4:
                 case 8:
                 case 16:
+                case 32:
+                case 64:
                     break;
                 default:
                     logger.WriteLine(string.Format("Warning in line {0}: byte width {1} is not power of 2, .hex file not generated", this.LineNumber.ToString(), this.byteWidth.ToString()));
