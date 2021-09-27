@@ -115,6 +115,15 @@ namespace mcc
             sbSignals.AppendLine("----Start boilerplate code(use with utmost caution!)");
             sbSignals.AppendLine($"-- {prefix}_sym_a <= -- TODO concatenate microinstruction address and character address");
             sbSignals.AppendLine($"-- {prefix}_sym_d <= {prefix}_symbol_byte(to_integer(unsigned({prefix}_sym_a)));");
+            sbSignals.AppendLine($"----convert symbol entries to byte-oriented ROM");
+            sbSignals.AppendLine($"--gen_r: for r in 0 to SYMBOL_ADDRESS_LAST generate");
+            sbSignals.AppendLine($"--begin");
+            sbSignals.AppendLine($"--    gen_c: for c in 0 to SYMBOL_BYTE_LAST generate");
+            sbSignals.AppendLine($"--   begin");
+            sbSignals.AppendLine($"--           --assert false report \"r = \" & integer'image(r) & \" c = \" & integer'image(c) severity note;");
+            sbSignals.AppendLine($"--           {prefix}_symbol_byte(r * (SYMBOL_BYTE_LAST + 1) + c) <= {prefix}_symbol_entry(r)(SYMBOL_DATA_WIDTH - 8 * c - 1 downto SYMBOL_DATA_WIDTH - 8 * (c + 1));");
+            sbSignals.AppendLine($"--   end generate;");
+            sbSignals.AppendLine($"--end generate;");
             sbSignals.AppendLine("----End boilerplate code");
 
             return sbSignals.ToString();

@@ -180,6 +180,16 @@ namespace mcc
 
         }
 
+        public virtual bool IsValidSubParameter(string name)
+        {
+            return false;
+        }
+
+        public string GetDefaultValue()
+        {
+            return Values[DefaultValue].Name;
+        }
+
         public override void ParseContent()
         {
             base.ParseContent();

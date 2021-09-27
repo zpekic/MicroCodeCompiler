@@ -10,6 +10,11 @@ namespace mcc
 
         }
 
+        public override bool IsValidSubParameter(string name)
+        {
+            return string.IsNullOrEmpty(name) ? false : name.Equals(this.Label, System.StringComparison.InvariantCultureIgnoreCase);
+        }
+
         public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
         {
             StringBuilder sbCode = new StringBuilder();

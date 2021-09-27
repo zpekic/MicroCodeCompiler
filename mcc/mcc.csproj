@@ -81,6 +81,7 @@
     <Compile Include="FieldReg.cs" />
     <Compile Include="MemBlock.cs" />
     <Compile Include="FieldVal.cs" />
+    <Compile Include="Sub.cs" />
     <Compile Include="Symbol.cs" />
   </ItemGroup>
   <ItemGroup>

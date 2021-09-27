@@ -212,9 +212,6 @@ namespace mcc
             ParsedLine continuationLine = null;
             string rawLine, comment;
             bool inImplementationSection = false;
-            //Dictionary<string, Alias> aliases = new Dictionary<string, Alias>();
-            //Dictionary<string, int> labelLine = new Dictionary<string, int>();
-            //int fieldLeftPos = -1; // microinstruction word top bit position not yet initialized
             MicroField checkFi = null;
             MicroField checkFt = null;
             MicroField checkFe = null;
@@ -238,10 +235,6 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".org", out label, out content))
                     {
                         Assert(string.IsNullOrEmpty(label), "Label not allowed on .org");
-                        //Assert(GetMemorySize(parsedLines.Single(pl => pl.GetType().ToString() == "Code"), out microcodeDepth, out microcodeWidth), ".code size not yet defined");
-                        //Assert(GetMemorySize(code, out microcodeDepth, out microcodeWidth), ".code size not yet defined");
-                        //Assert((newValue > 0) && (newValue < microcodeDepth), string.Format(".org value of '{0}' out of allowed range 0 .. {1}.", newValue.ToString(), (microcodeDepth - 1).ToString()));
-                        //Assert((newValue > orgValue) && (newValue < microcodeDepth), string.Format(".org value of '{0}' out of allowed range {1} .. {2}.", newValue.ToString(), (orgValue + 1).ToString(), (microcodeDepth - 1).ToString()));
                         Org org = new Org(lineCounter, -1, label, content, logger);
                         if (((ParsedLine) org).Pass1() == null)
                         {
@@ -265,7 +258,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".code outside definition section");
 
                         Code code = new Code(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine) code;
                         continuationLine = ((ParsedLine) code).Pass1();
                         parsedLines.Add(code);
 
@@ -278,7 +270,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".code outside definition section");
 
                         Symbol symbol = new Symbol(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine) code;
                         continuationLine = ((ParsedLine) symbol).Pass1();
                         parsedLines.Add(symbol);
 
@@ -291,7 +282,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Mapper mapper = new Mapper(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
                         continuationLine = ((ParsedLine) mapper).Pass1();
                         parsedLines.Add(mapper);
 
@@ -304,7 +294,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Controller controller = new Controller(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)mapper;
                         continuationLine = ((ParsedLine) controller).Pass1();
                         parsedLines.Add(controller);
 
@@ -317,7 +306,6 @@ namespace mcc
                         Assert(inImplementationSection, ".map outside implementation section");
 
                         Map map = new Map(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)map;
                         continuationLine = ((ParsedLine) map).Pass1();
                         parsedLines.Add(map);
 
@@ -332,8 +320,6 @@ namespace mcc
 
                         FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, logger);
                         checkFi = fi;
-                        //fieldLeftPos = fi.SetRange(GetLeftPos(fieldLeftPos));
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fi;
                         continuationLine = ((ParsedLine) fi).Pass1();
                         parsedLines.Add(fi);
                         AddLabel(label);
@@ -349,8 +335,6 @@ namespace mcc
 
                         FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, logger);
                         checkFt = ft;
-                        //fieldLeftPos = ft.SetRange(GetLeftPos(fieldLeftPos));
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)ft;
                         continuationLine = ((ParsedLine) ft).Pass1();
                         parsedLines.Add(ft);
 
@@ -365,8 +349,6 @@ namespace mcc
 
                         FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, logger);
                         checkFe = fe;
-                        //fieldLeftPos = fe.SetRange(GetLeftPos(fieldLeftPos));
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fe;
                         continuationLine = ((ParsedLine) fe).Pass1();
                         parsedLines.Add(fe);
 
@@ -379,8 +361,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".regfield outside definition section.");
 
                         FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, logger, parsedLines);
-                        //fieldLeftPos = fr.SetRange(GetLeftPos(fieldLeftPos));
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fr;
                         continuationLine = ((ParsedLine) fr).Pass1();
                         parsedLines.Add(fr);
 
@@ -393,8 +373,6 @@ namespace mcc
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
                         FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, logger, parsedLines);
-                        //fieldLeftPos = fv.SetRange(GetLeftPos(fieldLeftPos));
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)fv;
                         continuationLine = ((ParsedLine) fv).Pass1();
                         parsedLines.Add(fv);
 
@@ -407,9 +385,21 @@ namespace mcc
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
                         Alias alias = new Alias(lineCounter, orgValue, label, content, logger);
-                        //continuationLine = content.EndsWith(";") ? null : (ParsedLine)alias;
                         continuationLine = ((ParsedLine) alias).Pass1();
                         parsedLines.Add(alias);
+
+                        continue;
+                    }
+
+                    if (ParsedLine.Split3(rawLine, ".sub", out label, out content))
+                    {
+                        Assert(!string.IsNullOrEmpty(label), "Label required on .sub (must match entry point in the code)");
+                        Assert(continuationLine == null, "Previous line not closed with ';'");
+                        Assert(!inImplementationSection, ".sub outside definition section");
+
+                        Sub sub = new Sub(lineCounter, orgValue, label, content, logger);
+                        continuationLine = ((ParsedLine)sub).Pass1();
+                        parsedLines.Add(sub);
 
                         continue;
                     }
@@ -421,8 +411,6 @@ namespace mcc
                         //Assert(!inImplementationSection, ".map not allowed after any microinstruction.");
 
                         Assert(orgValue >= 0, ".org not set.");
-                        //Assert(GetMemorySize(parsedLines.Single(pl => pl.GetType().ToString() == "Code"), out microcodeDepth, out microcodeWidth), ".code size not yet defined");
-                        //Assert(orgValue < microcodeDepth, "Out of microinstruction memory.");
 
                         if (ParsedLine.Split3(rawLine, ":", out label, out content))
                         {
@@ -552,6 +540,14 @@ namespace mcc
                     fieldHiPos = mf.SetRange(fieldHiPos);
                     mf.CheckFieldWidth(codeDepth);
                     continue;
+                }
+
+                if (pl is Sub)
+                {
+                    Sub sub = (Sub)pl;
+
+                    Assert(labelOrg.Keys.Contains(sub.Label), $".sub label '{sub.Label}' not defined in code");
+                    Assert(sub.CheckParams(fields), $".sub with label '{sub.Label}' specifies unknown or invalid .regfields");
                 }
 
                 if (pl is MicroInstruction)
