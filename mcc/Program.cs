@@ -16,6 +16,7 @@ namespace mcc
         static Dictionary<string, int> labelOrg = new Dictionary<string, int>();
         static System.IO.StreamReader sourceFile;
         static Logger logger;
+        static bool isRisingEdge = true;
 
         static int Main(string[] args)
         {
@@ -295,6 +296,7 @@ namespace mcc
 
                         Controller controller = new Controller(lineCounter, orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) controller).Pass1();
+                        isRisingEdge = controller.GetClockEdge();
                         parsedLines.Add(controller);
 
                         continue;
@@ -584,7 +586,7 @@ namespace mcc
             }
 
             logger.WriteLine(string.Empty);
-            return mem.Generate(allowUninitialized, fields, isConversion);
+            return mem.Generate(allowUninitialized, fields, isConversion, isRisingEdge);
         }
 
         private static void AddLabel(string label)

@@ -10,7 +10,7 @@ namespace mcc
         {
         }
 
-        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels, bool risingEdge)
         {
             StringBuilder sbCode = new StringBuilder();
 

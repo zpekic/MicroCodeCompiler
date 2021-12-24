@@ -15,7 +15,7 @@ namespace mcc
             this.Width = -1;
         }
 
-        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
+        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion, bool isRisingEdge)
         {
             Assert(!string.IsNullOrEmpty(prefix), "<prefix>:<mapperfilename>.vhd expected - prefix not found");
             Assert(fields == null, "Unexpected data passed in");

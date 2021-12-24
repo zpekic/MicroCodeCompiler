@@ -10,7 +10,7 @@ namespace mcc
         {
         }
 
-        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
+        protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion, bool isRisingEdge)
         {
             Assert(!string.IsNullOrEmpty(prefix), "<prefix>:<codefilename>.vhd expected - prefix not found");
             Assert(!isConversion, "Code memory cannot be used for conversion (internal error)");
@@ -27,7 +27,7 @@ namespace mcc
             {
                 logger.PrintBanner(vhdFile);
                 template = template.Replace("[NAME]", name);
-                template = template.Replace("[FIELDS]", GetVhdFields(prefix, fields, out defaultMicroinstruction));
+                template = template.Replace("[FIELDS]", GetVhdFields(prefix, fields, out defaultMicroinstruction, isRisingEdge));
                 template = template.Replace("[SIZES]", GetVhdlSizes("CODE", fif as FieldIf));
                 template = template.Replace("[TYPE]", $"type {prefix}_code_memory is array(0 to {capacity - 1}) of std_logic_vector({dataWidth - 1} downto 0);");
                 template = template.Replace("[SIGNAL]", $"signal {prefix}_uinstruction: std_logic_vector({dataWidth - 1} downto 0);");
@@ -48,7 +48,7 @@ namespace mcc
             return mf.Label;
         }
 
-        protected string GetVhdFields(string prefix, List<MicroField> fields, out string defaultMicroinstruction)
+        protected string GetVhdFields(string prefix, List<MicroField> fields, out string defaultMicroinstruction, bool isRisingEdge)
         {
             Assert(fields != null && (fields.Count > 0), "Can't generate code - no microcode fields defined");
 
@@ -78,7 +78,7 @@ namespace mcc
                 }
 
                 // attempt to create VHDL code for lazy copy/pasting
-                StringBuilder sbCode = field.GetVhdlBoilerplateCode(prefix, fieldLabels);
+                StringBuilder sbCode = field.GetVhdlBoilerplateCode(prefix, fieldLabels, isRisingEdge);
                 sbFields.Append(sbCode);
 
                 sbFields.AppendLine();

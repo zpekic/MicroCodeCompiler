@@ -15,7 +15,7 @@ namespace mcc
             return string.IsNullOrEmpty(name) ? false : name.Equals(this.Label, System.StringComparison.InvariantCultureIgnoreCase);
         }
 
-        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels, bool isRisingEdge)
         {
             StringBuilder sbCode = new StringBuilder();
             bool includeReset = (this.ResetValue >= 0);
@@ -45,7 +45,7 @@ namespace mcc
                 sbCode.AppendLine($"-- update_{Label}: process(clk, {prefix}_{Label})");
                 sbCode.AppendLine("-- begin");
             }
-            sbCode.AppendLine("--	if (rising_edge(clk)) then");
+            sbCode.AppendLine(isRisingEdge ? "--	if (rising_edge(clk)) then" : "--	if (falling_edge(clk)) then");
 
             if (HasNamedValues())
             {

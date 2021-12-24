@@ -11,6 +11,7 @@ namespace mcc
     {
         protected List<string> outputFiles = new List<string>();
         protected int stackDepth;
+        protected bool isRisingEdge = true;
 
         public Controller(int lineNumber, int orgValue, string label, string content, Logger logger) : base(".controller", lineNumber, orgValue, label, content, logger)
         {
@@ -19,18 +20,47 @@ namespace mcc
 
         public override void ParseContent()
         {
+            int lastParamOffset = 1;
+            bool edgeSet = false;
+
             base.ParseContent();
 
             string[] param = this.Content.Split(',');
 
-            Assert(param.Length > 1, "Missing parameter(s) - expected: filename0.ext[, filename1.ext [, ...]], stack_depth");
-            for (int i = 0; i < param.Length - 1; i++)
+            Assert(param.Length > 1, "Missing parameter(s) - expected: filename0.ext[, filename1.ext [, ...]], stack_depth[, rising|falling]");
+
+            if ("rising".Equals(param[param.Length - 1].Trim(), StringComparison.InvariantCultureIgnoreCase))
+            {
+                lastParamOffset++;
+                isRisingEdge = true;
+                edgeSet = true;
+            }
+            if ("falling".Equals(param[param.Length - 1].Trim(), StringComparison.InvariantCultureIgnoreCase))
+            {
+                lastParamOffset++;
+                isRisingEdge = false;
+                edgeSet = true;
+            }
+            for (int i = 0; i < param.Length - lastParamOffset; i++)
             {
                 outputFiles.Add(param[i].Trim());
             }
-            Assert(int.TryParse(param[param.Length - 1], out this.stackDepth), "Bad stack depth");
+            Assert(int.TryParse(param[param.Length - lastParamOffset], out this.stackDepth), "Bad stack depth");
             Assert((this.stackDepth > 1) && (this.stackDepth < 9), "Stack depth must be between 2 and 8");
             Assert(outputFiles.Count >= 0, "No output files specified");
+            if (edgeSet)
+            {
+                logger.WriteLine("Clock edge explicitly set to " + (isRisingEdge ? "rising_edge()" : "falling_edge()"));
+            }
+            else
+            {
+                logger.WriteLine("Warning: Clock edge implicitly (by default) set to " + (isRisingEdge ? "rising_edge()" : "falling_edge()"));
+            }
+        }
+
+        public bool GetClockEdge()
+        {
+            return this.isRisingEdge;
         }
 
         public int GenerateFiles(string trace)
@@ -66,7 +96,7 @@ namespace mcc
                 switch (outputFileInfo.Extension.ToLowerInvariant())
                 {
                     case ".vhd":
-                        count += GenerateVhdFile(outputFileInfo);
+                        count += GenerateVhdFile(outputFileInfo, this.isRisingEdge);
                         break;
                     default:
                         logger.WriteLine(string.Format("Warning in line {0}: unsupported extension in file '{1}'", this.LineNumber.ToString(), fileName));
@@ -76,7 +106,7 @@ namespace mcc
             return count;
         }
 
-        private int GenerateVhdFile(FileInfo outputFileInfo)
+        private int GenerateVhdFile(FileInfo outputFileInfo, bool isRisingEdge)
         {
             logger.Write($"Generating controller '{outputFileInfo.FullName}' ...");
             string stack_def = string.Empty;
@@ -111,7 +141,7 @@ namespace mcc
             stack_pop  = stack_pop.TrimEnd(new char[] {'\r', '\n'});
             stack_push = stack_push.TrimEnd(new char[] {'\r','\n'});
 
-            string template = LoadVhdControllerTemplate("controller_template.vhd");
+            string template = LoadVhdControllerTemplate("controller_template.vhd", this.isRisingEdge);
             string name = outputFileInfo.Name.Substring(0, outputFileInfo.Name.IndexOf("."));
             using (System.IO.StreamWriter vhdFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
@@ -129,7 +159,7 @@ namespace mcc
             return 1;
         }
 
-        private string LoadVhdControllerTemplate(string fileName)
+        private string LoadVhdControllerTemplate(string fileName, bool isRisingEdge)
         {
             if (File.Exists(fileName))
             {
@@ -190,7 +220,7 @@ namespace mcc
                 sb.AppendLine("   if (reset = '1') then");
                 sb.AppendLine("        uPC0 <= (others => '0');	-- reset clears top microcode program counter");
                 sb.AppendLine("	  else");
-                sb.AppendLine("       if (rising_edge(clk)) then");
+                sb.AppendLine(isRisingEdge ? "       if (rising_edge(clk)) then" : "       if (falling_edge(clk)) then");
                 sb.AppendLine("             if (jump = '1') then");
                 sb.AppendLine("                  if (push = '1') then");
                 sb.AppendLine("[STACK_PUSH]");

@@ -10,7 +10,7 @@ namespace mcc
         {
         }
 
-        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels, bool risingEdge)
         {
             StringBuilder sbCode = new StringBuilder($"-- include '.controller <filename.vhd>, <stackdepth>;' in .mcc file to generate pre-canned microcode control unit and connect 'then' to {prefix}_{Label}");
 

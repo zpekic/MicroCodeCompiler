@@ -14,7 +14,7 @@ namespace mcc
             this.To = -1;
         }
 
-        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        public override StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels, bool risingEdge)
         {
             StringBuilder sbCode = new StringBuilder();
 

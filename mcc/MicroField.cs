@@ -394,7 +394,7 @@ namespace mcc
             return string.IsNullOrEmpty(foundLabel) ? valueName : foundLabel;
         }
 
-        public virtual StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels)
+        public virtual StringBuilder GetVhdlBoilerplateCode(string prefix, List<string> fieldLabels, bool risingEdge)
         {
             StringBuilder sbCode = new StringBuilder("-- (no sample code provided)");
 

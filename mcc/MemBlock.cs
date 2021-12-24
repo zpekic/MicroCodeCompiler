@@ -228,7 +228,7 @@ namespace mcc
             return true;
         }
 
-        public int Generate(bool allowUninitialized, List<MicroField> fields, bool isConversion)
+        public int Generate(bool allowUninitialized, List<MicroField> fields, bool isConversion, bool isRisingEdge)
         {
             int count = 0;
             int capacity = 2 << (this.addressWidth - 1);
@@ -294,7 +294,7 @@ namespace mcc
                 switch (outputFileInfo.Extension.ToLowerInvariant())
                 {
                     case ".vhd":
-                        count += GenerateVhdFile(prefix, outputFileInfo, fields, sbVhdUninit.ToString(), isConversion);
+                        count += GenerateVhdFile(prefix, outputFileInfo, fields, sbVhdUninit.ToString(), isConversion, isRisingEdge);
                         break;
                     case ".hex":
                         count += GenerateHexFile(outputFileInfo, !isConversion);
@@ -835,7 +835,7 @@ namespace mcc
             return sbSizes.ToString();
         }
 
-        protected virtual int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion)
+        protected virtual int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion, bool isRisingEdge)
         {
             // the real implementation is in derived classes as the generate VHD varies 
             return 0;
