@@ -117,7 +117,7 @@ namespace mcc
                 if ((this.stackDepth - i) == 1)
                 {
                     stack_def += $"uPC{i} ";
-                    stack_pop += $"\t\t\t\t\t\t\t\tuPC{i} <= (others => '0');\r\n";
+                    stack_pop += $"\t\t\t\t\t\t\t\tuPC{i} <= (others => '1');\r\n";
                 }
                 else
                 {
