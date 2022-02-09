@@ -57,8 +57,12 @@ namespace mcc
             List<string> fieldLabels = fields.ConvertAll(new System.Converter<MicroField, string>(GetFieldLabel));
             foreach (MicroField field in fields)
             {
-                sbDefault.Append(GetBinaryString(field.DefaultValue, field.Width));
-                sbDefault.Append("_");
+                if (field.OverlappingFields.Count == 0)
+                {
+                    // default microinstruction is based on base fields, not the overlapping ones
+                    sbDefault.Append(GetBinaryString(field.DefaultValue, field.Width));
+                    sbDefault.Append("_");
+                }
 
                 sbFields.AppendLine($"--");
                 sbFields.AppendLine($"-- {field.GetParsedLineString()}");
