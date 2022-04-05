@@ -20,6 +20,10 @@ namespace mcc
             if (!string.IsNullOrEmpty(this.Content))
             {
                 RegNames = this.Content.Split(',');
+                for (int i = 0; i < RegNames.Length; i++)
+                {
+                    RegNames[i] = RegNames[i].Trim();
+                }
             }
         }
 

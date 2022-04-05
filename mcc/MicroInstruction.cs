@@ -50,98 +50,131 @@ namespace mcc
 
             // sanitize microinstruction statements and extract if-then-else and register ( name <= value ) and value (name = value) assignments 
             string[] statements = Content.Split(',');
+            // glue together chopped up sub(param, param, ...) calls
+            int callStart = -1;
             for (int i = 0; i < statements.Length; i++)
             {
-                string name, temp;
                 string statement = statements[i].Trim();
-
-                if (statement.StartsWith("if", System.StringComparison.InvariantCultureIgnoreCase))
+                statements[i] = statement;
+                if (callStart < 0)
                 {
-                    Assert(string.IsNullOrEmpty(value_if), "if-then-else already defined");
-                    Assert(Split3(statement, "then", out value_if, out value_then), "then clause missing in if statement");
-                    Assert(Split3(value_if, " ", out temp, out value_if), "if condition could not be parsed");
-                    if (!Split3(value_then, "else", out value_then, out value_else))
+                    Assert(!statement.EndsWith(")") || statement.Contains("("), "misformed subroutine call");
+
+                    if (statement.Contains("(") && !statement.EndsWith(")"))
                     {
-                        logger.WriteLine($"Warning: else clause missing in if statement, default value '{value_else}' will be used");
+                        callStart = i;
                     }
                 }
                 else
                 {
-                    if (statements[i].EndsWith(")"))
+                    Assert(!statement.Contains("(") || statement.EndsWith(")"), "misformed subroutine call");
+
+                    statements[callStart] += ',';
+                    statements[callStart] += statement;
+                    if (statement.EndsWith(")") && !statement.Contains("("))
                     {
-                        string subLabel, subParams;
-                        string[] regValues = null;
+                        callStart = -1;
+                    }
+                    statements[i] = string.Empty;
+                }
+            }
 
-                        // check if valid ".sub call"
-                        Assert(Split3(statements[i].Remove(statements[i].Length - 1, 1), "(", out subLabel, out subParams), $"Statement '{statements[i]}' not recognized as valid .sub call");
-                        Assert(!string.IsNullOrEmpty(subLabel), "subroutine call without a label");
-                        Assert(string.IsNullOrEmpty(value_if) && string.IsNullOrEmpty(value_then) && string.IsNullOrEmpty(value_else), "if-then-else already defined (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+            // process them
+            for (int i = 0; i < statements.Length; i++)
+            {
+                string name, temp;
+                string statement = statements[i]; // already trimmed
 
-                        if (!string.IsNullOrEmpty(subParams))
+                if (!string.IsNullOrEmpty(statement))
+                {
+                    if (statement.StartsWith("if", System.StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        Assert(string.IsNullOrEmpty(value_if), "if-then-else already defined");
+                        Assert(Split3(statement, "then", out value_if, out value_then), "then clause missing in if statement");
+                        Assert(Split3(value_if, " ", out temp, out value_if), "if condition could not be parsed");
+                        if (!Split3(value_then, "else", out value_then, out value_else))
                         {
-                            regValues = subParams.Split(',');
+                            logger.WriteLine($"Warning: else clause missing in if statement, default value '{value_else}' will be used");
                         }
-
-                        foreach (ParsedLine parsedLine in ParsedLines)
-                        {
-                            FieldIf fif = parsedLine as FieldIf;
-                            if (fif != null)
-                            {
-                                value_if = fif.GetDefaultValue();
-                            }
-                            Sub sub = parsedLine as Sub;
-                            if (sub != null && subLabel.Equals(sub.Label, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                value_then = subLabel;
-                                value_else = subLabel;
-                                // now match optional parameters (these all need to be <register> <= value)
-                                if (regValues == null)
-                                {
-                                    if (sub.RegNames != null)
-                                    {
-                                        Assert(false, $"Call to '{subLabel}' requires {sub.RegNames.Length} parameter(s)");
-                                    }
-                                }
-                                else
-                                {
-                                    Assert(sub.RegNames != null, $"Call to '{subLabel}' does not allow any parameters");
-                                    Assert(sub.RegNames.Length == regValues.Length, $"'{subLabel}' called with {regValues.Length} parameter(s) and requires {sub.RegNames.Length}");
-                                    // generate assignments
-                                    for (int param = 0; param < sub.RegNames.Length; param++)
-                                    {
-                                        string regName = sub.RegNames[param]; 
-
-                                        Assert(!registers.Keys.Contains(regName), $"'{regName} <= ...' already assigned");
-                                        Assert(!values.Keys.Contains(regName), $"'{regName} = ...' already assigned");
-                                        registers.Add(regName, regValues[param]);
-                                    }
-                                }
-                            }
-                        }
-
-                        // double check the if default then label else label 
-                        Assert(!string.IsNullOrEmpty(value_if), "default condition not found for '{subLabel}' (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
-                        Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), ".sub label '{subLabel}' not defined");
-
                     }
                     else
                     {
-                        string[] nameValuePair = new string[2];
-
-                        Assert(Split3(statements[i], "=", out nameValuePair[0], out nameValuePair[1]), $"Statement '{statements[i]}' not recognized (unresolved alias or comma/semicolon confusion)");
-                        if (nameValuePair[0].EndsWith("<"))
+                        if (statements[i].EndsWith(")"))
                         {
-                            name = nameValuePair[0].TrimEnd(new char[] { '<' }).Trim();
-                            Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
-                            Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
-                            registers.Add(name, nameValuePair[1].Trim());
+                            string subLabel, subParams;
+                            string[] regValues = null;
+
+                            // check if valid ".sub call"
+                            Assert(Split3(statements[i].Remove(statements[i].Length - 1, 1), "(", out subLabel, out subParams), $"Statement '{statements[i]}' not recognized as valid .sub call");
+                            Assert(!string.IsNullOrEmpty(subLabel), "subroutine call without a label");
+                            Assert(string.IsNullOrEmpty(value_if) && string.IsNullOrEmpty(value_then) && string.IsNullOrEmpty(value_else), "if-then-else already defined (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+
+                            if (!string.IsNullOrEmpty(subParams))
+                            {
+                                regValues = subParams.Split(',');
+                            }
+
+                            foreach (ParsedLine parsedLine in ParsedLines)
+                            {
+                                FieldIf fif = parsedLine as FieldIf;
+                                if (fif != null)
+                                {
+                                    value_if = fif.GetDefaultValue();
+                                }
+                                Sub sub = parsedLine as Sub;
+                                if (sub != null && subLabel.Equals(sub.Label, StringComparison.InvariantCultureIgnoreCase))
+                                {
+                                    value_then = subLabel;
+                                    value_else = subLabel;
+                                    // now match optional parameters (these all need to be <register> <= value)
+                                    if (regValues == null)
+                                    {
+                                        if (sub.RegNames != null)
+                                        {
+                                            Assert(false, $"Call to '{subLabel}' requires {sub.RegNames.Length} parameter(s)");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Assert(sub.RegNames != null, $"Call to '{subLabel}' does not allow any parameters");
+                                        Assert(sub.RegNames.Length == regValues.Length, $"'{subLabel}' called with {regValues.Length} parameter(s) and requires {sub.RegNames.Length}");
+                                        // generate assignments
+                                        for (int param = 0; param < sub.RegNames.Length; param++)
+                                        {
+                                            string regName = sub.RegNames[param];
+
+                                            Assert(!registers.Keys.Contains(regName), $"'{regName} <= ...' already assigned");
+                                            Assert(!values.Keys.Contains(regName), $"'{regName} = ...' already assigned");
+                                            registers.Add(regName, regValues[param]);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // double check the if default then label else label 
+                            Assert(!string.IsNullOrEmpty(value_if), "default condition not found for '{subLabel}' (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+                            Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), ".sub label '{subLabel}' not defined");
+
                         }
                         else
                         {
-                            name = nameValuePair[0].Trim();
-                            Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
-                            Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
-                            values.Add(name, nameValuePair[1].Trim());
+                            string[] nameValuePair = new string[2];
+
+                            Assert(Split3(statements[i], "=", out nameValuePair[0], out nameValuePair[1]), $"Statement '{statements[i]}' not recognized (unresolved alias or comma/semicolon confusion)");
+                            if (nameValuePair[0].EndsWith("<"))
+                            {
+                                name = nameValuePair[0].TrimEnd(new char[] { '<' }).Trim();
+                                Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
+                                Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
+                                registers.Add(name, nameValuePair[1].Trim());
+                            }
+                            else
+                            {
+                                name = nameValuePair[0].Trim();
+                                Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
+                                Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
+                                values.Add(name, nameValuePair[1].Trim());
+                            }
                         }
                     }
                 }
