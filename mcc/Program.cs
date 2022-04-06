@@ -216,6 +216,7 @@ namespace mcc
             MicroField checkFi = null;
             MicroField checkFt = null;
             MicroField checkFe = null;
+            bool inBlockComment = false;
 
             // Read the file and display it line by line.  
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
@@ -228,6 +229,30 @@ namespace mcc
                 lineCounter++;
 
                 ParsedLine.Split3(rawLine.Trim(), "//", out rawLine, out comment);
+
+                // block comments are everything between //* and *//
+                if (inBlockComment)
+                {
+                    if (rawLine.EndsWith("*"))
+                    {
+                        inBlockComment = false;
+                        rawLine = comment;
+                    }
+                    else
+                    {
+                        comment = string.IsNullOrEmpty(comment) ? rawLine : rawLine + "//" + comment;
+                        rawLine = string.Empty;
+                    }
+
+                }
+                else
+                {
+                    if (comment.StartsWith("*"))
+                    {
+                        inBlockComment = true;
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(rawLine))
                 {
                     string label, content;
