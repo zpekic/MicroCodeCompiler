@@ -57,7 +57,7 @@ namespace mcc
             List<string> fieldLabels = fields.ConvertAll(new System.Converter<MicroField, string>(GetFieldLabel));
             foreach (MicroField field in fields)
             {
-                if (field.OverlappingFields.Count == 0)
+                if (field.Width > 0)
                 {
                     // default microinstruction is based on base fields, not the overlapping ones
                     sbDefault.Append(GetBinaryString(field.DefaultValue, field.Width));
@@ -90,7 +90,10 @@ namespace mcc
             }
 
             // remove last underscore
-            sbDefault.Remove(sbDefault.Length - 1, 1);
+            if (sbDefault.Length > 0)
+            {
+                sbDefault.Remove(sbDefault.Length - 1, 1);
+            }
             defaultMicroinstruction = sbDefault.ToString();
 
             return sbFields.ToString();

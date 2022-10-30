@@ -69,7 +69,7 @@ namespace mcc
         {
             Assert(address < (1 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
             string rawBinaryString = data.Replace("_", string.Empty);
-            Assert(rawBinaryString.Length == this.dataWidth, $"Invalid {flavor} data width of {rawBinaryString.Length} ({this.dataWidth} expected)");
+            Assert(rawBinaryString.Length == this.dataWidth, $"Invalid {flavor} ({comment}) generated data width of {rawBinaryString.Length} ({this.dataWidth} expected)");
             if (memory.ContainsKey(address))
             {
                 Assert(allowOverwrite, $"Attempting to overwrite {flavor} location '{address:X4}'");

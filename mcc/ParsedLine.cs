@@ -15,13 +15,13 @@ namespace mcc
         public string Content;
         protected Logger logger;
 
-        private Dictionary<string, string> Bin2Hex = new Dictionary<string, string>()
+        protected static Dictionary<string, string> Bin2Hex = new Dictionary<string, string>()
         {
             { "0000", "0"}, { "0001", "1"}, { "0010", "2"}, { "0011", "3"}, { "0100", "4"}, { "0101", "5"}, { "0110", "6"}, { "0111", "7"},
             { "1000", "8"}, { "1001", "9"}, { "1010", "A"}, { "1011", "B"}, { "1100", "C"}, { "1101", "D"}, { "1110", "E"}, { "1111", "F"},
         };
 
-        protected Dictionary<string, string> Bin2Oct = new Dictionary<string, string>()
+        protected static Dictionary<string, string> Bin2Oct = new Dictionary<string, string>()
         {
             {"000", "0" },
             {"001", "1" },
@@ -33,7 +33,7 @@ namespace mcc
             {"111", "7" }
         };
 
-        protected Dictionary<char, int> HexChar2Val = new Dictionary<char, int>()
+        protected static Dictionary<char, int> HexChar2Val = new Dictionary<char, int>()
         {
             {'0', 0},
             {'1', 1},
@@ -130,6 +130,8 @@ namespace mcc
         {
             value = 0;
             mask = 0;
+            char[] binOps = new char[] {'*', '/', '%', '+', '-', '&', '|', '^' }; // ordered by precendence!
+            int valueLeft, valueRight;
 
             string input = v.Trim();
             if (string.IsNullOrEmpty(input))
@@ -137,9 +139,97 @@ namespace mcc
                 return false;
             }
 
+            // super simple and lame recursive expression evaluator!
+            // does not support changing of precedence using ()
+            foreach (char opChar in binOps)
+            {
+                if (input.Contains(opChar))
+                {
+                    int opCharPos = -1;
+                    bool singleQuote = false;
+                    bool doubleQuote = false;
+
+                    for (int charPos = 0; charPos < input.Length && (opCharPos < 0); charPos++)
+                    {
+                        if ((input[charPos] == opChar) && (!singleQuote) && (!doubleQuote))
+                        {
+                            opCharPos = charPos;
+                        }
+                        else
+                        {
+                            switch (input[charPos])
+                            {
+                                case '"':
+                                    if (!singleQuote)
+                                    {
+                                        doubleQuote = !doubleQuote;
+                                    }
+                                    break;
+                                case '\'':
+                                    if (!doubleQuote)
+                                    {
+                                        singleQuote = !singleQuote;
+                                    }
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    }
+
+                    if ((opCharPos >= 0) && GetValueAndMask(input.Substring(0, opCharPos), out valueLeft, out mask, targets))
+                    {
+                        if (GetValueAndMask(input.Substring(opCharPos + 1), out valueRight, out mask, targets))
+                        {
+                            switch (opChar)
+                            {
+                                case '*':
+                                    value = valueLeft * valueRight;
+                                    return true;
+                                case '/':
+                                    value = valueLeft / valueRight;
+                                    return true;
+                                case '%':
+                                    value = valueLeft % valueRight;
+                                    return true;
+                                case '+':
+                                    value = valueLeft + valueRight;
+                                    return true;
+                                case '-':
+                                    value = valueLeft - valueRight;
+                                    return true;
+                                case '&':
+                                    value = valueLeft & valueRight;
+                                    return true;
+                                case '|':
+                                    value = valueLeft | valueRight;
+                                    return true;
+                                case '^':
+                                    value = valueLeft & valueRight;
+                                    return true;
+                                default:
+                                    return false; // failure!
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            if (input.StartsWith("!"))
+            {
+                if (GetValueAndMask(input.Substring(1).Trim(), out value, out mask, targets))
+                {
+                    value = -(value + 1); // 2's complement reflected to int values 
+                    return true;
+                }
+
+                return false; // failure!
+            }
+
             if (input.StartsWith("@"))
             {
-                string label = input.Substring(1);
+                string label = input.Substring(1).Trim();
                 if (!string.IsNullOrEmpty(label))
                 {
                     Assert((targets != null) && (targets.Count > 0), "Trying to use @label with no targets available");
@@ -154,7 +244,7 @@ namespace mcc
 
             if (input.StartsWith("$"))
             {
-                string label = input.Substring(1);
+                string label = input.Substring(1).Trim();
                 if (!string.IsNullOrEmpty(label))
                 {
                     logger.WriteLine(string.Format("Warning: line {0} - label '{1}' after $ ignored" , LineNumber.ToString(), label));
@@ -529,23 +619,33 @@ namespace mcc
                     Assert(true, $"Unexpected value of {value} can't fit into field of length {length}");
                     break;
 
+                case 3:
+                    return $"O\"{Convert.ToString(value, 8)}\"";
                 case 4:
-                    return $"X\"{value:X1}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper()}\"";
                 case 8:
-                    return $"X\"{value:X2}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(2, '0')}\"";
+                case 9:
+                    return $"O\"{Convert.ToString(value, 8).PadLeft(3, '0')}\"";
                 case 12:
-                    return $"X\"{value:X3}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(3, '0')}\"";
+                case 15:
+                    return $"O\"{Convert.ToString(value, 8).PadLeft(5, '0')}\"";
                 case 16:
-                    return $"X\"{value:X4}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(4, '0')}\"";
                 case 20:
-                    return $"X\"{value:X5}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(5, '0')}\"";
                 case 24:
-                    return $"X\"{value:X6}\"";
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(6, '0')}\"";
+                case 28:
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(7, '0')}\"";
+                case 32:
+                    return $"X\"{Convert.ToString(value, 16).ToUpper().PadLeft(8, '0')}\"";
 
                 default:
                     break;
             }
-            return '"' + GetBinaryString(value, length) +'"';
+            return $"\"{GetBinaryString(value, length)}\"";
         }
 
         protected string GetHexFromBinary(string binaryData, int dataWidth)

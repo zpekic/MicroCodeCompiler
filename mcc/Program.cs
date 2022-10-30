@@ -10,13 +10,15 @@ namespace mcc
 {
     class Program
     {
-        static int lineCounter = 0;
+        static Dictionary<string, int> lineCounter = new Dictionary<string, int>();
+        static string currentFileName;
         static List<ParsedLine> parsedLines = new List<ParsedLine>();
         static Dictionary<string, int> labelLine = new Dictionary<string, int>();
         static Dictionary<string, int> labelOrg = new Dictionary<string, int>();
-        static System.IO.StreamReader sourceFile;
         static Logger logger;
         static bool isRisingEdge = true;
+        static bool assemblyMode = false;
+        static int sourceFileIndex = -1;
 
         static int Main(string[] args)
         {
@@ -28,11 +30,12 @@ namespace mcc
 
                 if (!HelpMode(args))
                 {
-                    if (args[0].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase))
+                    if (CompileMode(args, out assemblyMode, out sourceFileIndex))
+                    //if (args[0].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase))
                     {
                         // compile mode
-                        Pass0(args[0]);
-                        Pass1(args[0]);
+                        Pass0(args[sourceFileIndex], assemblyMode);
+                        Pass1(args[sourceFileIndex], assemblyMode);
                     }
                     else
                     {
@@ -45,20 +48,22 @@ namespace mcc
             catch (MccException ex)
             {
                 logger.WriteLine(ex.Message);
+                logger.WriteLine(ex.StackTrace);
                 return 1;
             }
             catch (System.Exception ex)
             {
                 logger.WriteLine(string.Format("Error in line {0}: {1}", lineCounter.ToString(), ex.Message));
+                logger.WriteLine(ex.StackTrace);
                 return 2;
             }
-            finally
-            {
-                if (sourceFile != null)
-                {
-                    sourceFile.Close();
-                }
-            }
+//            finally
+//           {
+//                if (sourceFile != null)
+//                {
+//                    sourceFile.Close();
+//                }
+//            }
         }
 
         private static bool HelpMode(string[] args)
@@ -73,6 +78,29 @@ namespace mcc
             }
 
             return false;
+        }
+
+        private static bool CompileMode(string[] args, out bool assemblyMode, out int sourceFileIndex)
+        {
+            assemblyMode = false;
+            sourceFileIndex = -1;
+            string expectedExtension = ".mcc";
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].EndsWith(expectedExtension, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    assemblyMode = !args[i].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase);
+                    sourceFileIndex = i;
+                    return true;
+                }
+                if (args[i].StartsWith("-a:", StringComparison.InvariantCultureIgnoreCase) || args[i].StartsWith("/a:", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    expectedExtension = '.' + args[i].Split(':')[1];
+                }
+            }
+
+            return (sourceFileIndex >= 0);
         }
 
         private static void Convert(string[] args)
@@ -91,6 +119,7 @@ namespace mcc
             int address;
             bool isLastRecord;
             bool allowUninitialized = false;
+            System.IO.StreamReader sourceFile;
 
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
 
@@ -124,12 +153,12 @@ namespace mcc
                     sourceFile = new System.IO.StreamReader(sourceFileName);
                     while ((rawLine = sourceFile.ReadLine()) != null)
                     {
-                        lineCounter++;
+                        lineCounter[sourceFileName]++;
 
                         string hexLine = rawLine.Trim();
                         if (!string.IsNullOrEmpty(hexLine))
                         {
-                            if (mapper.ParseHexFileLine(lineCounter, hexLine.ToLowerInvariant(), out address, out byteData, out isLastRecord))
+                            if (mapper.ParseHexFileLine(lineCounter[sourceFileName], hexLine.ToLowerInvariant(), out address, out byteData, out isLastRecord))
                             {
                                 if (isLastRecord)
                                 {
@@ -138,7 +167,7 @@ namespace mcc
                                 }
                                 else
                                 {
-                                    mapper.Write(address, byteData, sourceFileName, hexLine, lineCounter, "hex");
+                                    mapper.Write(address, byteData, sourceFileName, hexLine, lineCounter[sourceFileName], "hex");
                                 }
                             }
                             else
@@ -207,7 +236,7 @@ namespace mcc
             logger.WriteLine($"Success: Conversion - {outputFileCount.ToString()} file(s) generated.");
         }
 
-        private static void Pass0(string sourceFileName)
+        private static void Pass0(string sourceFileName, bool assemblyMode)
         {
             int orgValue = -1;
             ParsedLine continuationLine = null;
@@ -217,16 +246,20 @@ namespace mcc
             MicroField checkFt = null;
             MicroField checkFe = null;
             bool inBlockComment = false;
+            System.IO.StreamReader sourceFile;
 
             // Read the file and display it line by line.  
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
+            Assert(!lineCounter.ContainsKey(sourceFileName), $"Recursive or circular #include {sourceFileName}");
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 1 out of 2.");
 
             sourceFile = new System.IO.StreamReader(sourceFileName);
+            currentFileName = sourceFileName;
+            lineCounter.Add(currentFileName, 0);
             while ((rawLine = sourceFile.ReadLine()) != null)
             {
-                lineCounter++;
+                lineCounter[sourceFileName]++;
 
                 ParsedLine.Split3(rawLine.Trim(), "//", out rawLine, out comment);
 
@@ -261,7 +294,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".org", out label, out content))
                     {
                         Assert(string.IsNullOrEmpty(label), "Label not allowed on .org");
-                        Org org = new Org(lineCounter, -1, label, content, logger);
+                        Org org = new Org(lineCounter[sourceFileName], -1, label, content, logger);
                         if (((ParsedLine) org).Pass1() == null)
                         {
                             orgValue = org.GetUpdatedOrgValue(orgValue);
@@ -283,7 +316,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".code outside definition section");
 
-                        Code code = new Code(lineCounter, orgValue, label, content, logger);
+                        Code code = new Code(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) code).Pass1();
                         parsedLines.Add(code);
 
@@ -295,7 +328,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".code outside definition section");
 
-                        Symbol symbol = new Symbol(lineCounter, orgValue, label, content, logger);
+                        Symbol symbol = new Symbol(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) symbol).Pass1();
                         parsedLines.Add(symbol);
 
@@ -307,7 +340,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
-                        Mapper mapper = new Mapper(lineCounter, orgValue, label, content, logger);
+                        Mapper mapper = new Mapper(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) mapper).Pass1();
                         parsedLines.Add(mapper);
 
@@ -319,7 +352,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
-                        Controller controller = new Controller(lineCounter, orgValue, label, content, logger);
+                        Controller controller = new Controller(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) controller).Pass1();
                         isRisingEdge = controller.GetClockEdge();
                         parsedLines.Add(controller);
@@ -332,7 +365,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(inImplementationSection, ".map outside implementation section");
 
-                        Map map = new Map(lineCounter, orgValue, label, content, logger);
+                        Map map = new Map(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) map).Pass1();
                         parsedLines.Add(map);
 
@@ -345,11 +378,11 @@ namespace mcc
                         Assert(!inImplementationSection, ".if outside definition section");
                         Assert(checkFi == null, ".if already defined");
 
-                        FieldIf fi = new FieldIf(lineCounter, orgValue, label, content, logger);
+                        FieldIf fi = new FieldIf(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFi = fi;
                         continuationLine = ((ParsedLine) fi).Pass1();
                         parsedLines.Add(fi);
-                        AddLabel(label);
+                        AddLabel(label, lineCounter[sourceFileName]);
 
                         continue;
                     }
@@ -360,7 +393,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".then outside definition section");
                         Assert(checkFt == null, ".then already defined");
 
-                        FieldThen ft = new FieldThen(lineCounter, orgValue, label, content, logger);
+                        FieldThen ft = new FieldThen(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFt = ft;
                         continuationLine = ((ParsedLine) ft).Pass1();
                         parsedLines.Add(ft);
@@ -374,7 +407,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".else outside definition section");
                         Assert(checkFe == null, ".else already defined");
 
-                        FieldElse fe = new FieldElse(lineCounter, orgValue, label, content, logger);
+                        FieldElse fe = new FieldElse(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFe = fe;
                         continuationLine = ((ParsedLine) fe).Pass1();
                         parsedLines.Add(fe);
@@ -387,7 +420,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".regfield outside definition section.");
 
-                        FieldReg fr = new FieldReg(lineCounter, orgValue, label, content, logger, parsedLines);
+                        FieldReg fr = new FieldReg(lineCounter[sourceFileName], orgValue, label, content, logger, parsedLines);
                         continuationLine = ((ParsedLine) fr).Pass1();
                         parsedLines.Add(fr);
 
@@ -399,7 +432,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
-                        FieldVal fv = new FieldVal(lineCounter, orgValue, label, content, logger, parsedLines);
+                        FieldVal fv = new FieldVal(lineCounter[sourceFileName], orgValue, label, content, logger, parsedLines);
                         continuationLine = ((ParsedLine) fv).Pass1();
                         parsedLines.Add(fv);
 
@@ -411,7 +444,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
-                        Alias alias = new Alias(lineCounter, orgValue, label, content, logger);
+                        Alias alias = new Alias(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) alias).Pass1();
                         parsedLines.Add(alias);
 
@@ -424,9 +457,20 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!inImplementationSection, ".sub outside definition section");
 
-                        Sub sub = new Sub(lineCounter, orgValue, label, content, logger);
+                        Sub sub = new Sub(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine)sub).Pass1();
                         parsedLines.Add(sub);
+
+                        continue;
+                    }
+
+                    if (ParsedLine.Split3(rawLine, "#include", out label, out content))
+                    {
+                        Assert(string.IsNullOrEmpty(label), "Label not allowed on #include pragma");
+                        Assert(continuationLine == null, "Previous line not closed with ';'");
+                        Assert(!string.IsNullOrEmpty(content), "File [path\\]name missing");
+
+                        Pass0(content.TrimEnd(';').Trim('"'), assemblyMode);
 
                         continue;
                     }
@@ -441,7 +485,7 @@ namespace mcc
 
                         if (ParsedLine.Split3(rawLine, ":", out label, out content))
                         {
-                            microInstruction = new MicroInstruction(lineCounter, orgValue, label, content, parsedLines, logger);
+                            microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, label, content, parsedLines, logger);
                             inImplementationSection = true;
                             if (!label.StartsWith("_"))
                             {
@@ -451,7 +495,7 @@ namespace mcc
                         }
                         else
                         {
-                            microInstruction = new MicroInstruction(lineCounter, orgValue, string.Empty, rawLine, parsedLines, logger);
+                            microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, string.Empty, rawLine, parsedLines, logger);
                             inImplementationSection = true;
                         }
 
@@ -477,20 +521,22 @@ namespace mcc
                     {
                         continuationLine = null;
                     }
-
                 }
             }
             sourceFile.Close();
 
-            // it is weird (but conceivable) that if/then/else fields are not defined
-            CheckField(checkFi, ".if field not defined, code might not compile or work");
-            CheckField(checkFt, ".then field not defined, code might not compile or work");
-            CheckField(checkFe, ".else field not defined, code might not compile or work");
+            if (!assemblyMode)
+            {
+                // it is weird (but conceivable) that if/then/else fields are not defined
+                CheckField(checkFi, ".if field not defined, code might not compile or work");
+                CheckField(checkFt, ".then field not defined, code might not compile or work");
+                CheckField(checkFe, ".else field not defined, code might not compile or work");
+            }
 
             logger.WriteLine($"Success: pass 1 {lineCounter.ToString()} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
         }
         
-        private static void Pass1(string sourceFileName)
+        private static void Pass1(string sourceFileName, bool assemblyMode)
         {
             Controller controller = null;
 
@@ -525,6 +571,7 @@ namespace mcc
                     Assert(code == null, ".code statement already defined");
                     code = (Code)pl;
                     code.GetSize(out codeDepth, out codeWidth);
+                    fieldHiPos = codeWidth - 1;
                     continue;
                 }
 
@@ -545,7 +592,7 @@ namespace mcc
                     Assert(mapper == null, ".mapper statement already defined");
                     mapper = (Mapper)pl;
                     mapper.GetSize(out mapDepth, out mapWidth);
-                    fieldHiPos = codeWidth - 1;
+                    //fieldHiPos = codeWidth - 1;
                     continue;
                 }
 
@@ -561,7 +608,7 @@ namespace mcc
 
                 if (pl is MicroField)
                 {
-                    Assert(mapper != null, ".mapper statement not defined");
+                    Assert(assemblyMode || (mapper != null), ".mapper statement not defined");
                     MicroField mf = (MicroField)pl;
                     fields.Add(mf);
                     fieldHiPos = mf.SetRange(fieldHiPos);
@@ -591,7 +638,14 @@ namespace mcc
             }
 
             int outputFileCount = Generate((MemBlock) code, true, "Generating code: ", fields, false);
-            outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null, false);
+            if (mapper == null)
+            {
+                Assert(assemblyMode, ".mapper definition is missing!");
+            }
+            else
+            {
+                outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null, false);
+            }
             outputFileCount += Generate((MemBlock)symbol, true, "Generating symbol: ", null, false);
             if (controller != null)
             {
@@ -614,11 +668,11 @@ namespace mcc
             return mem.Generate(allowUninitialized, fields, isConversion, isRisingEdge);
         }
 
-        private static void AddLabel(string label)
+        private static void AddLabel(string label, int line)
         {
             Assert(!string.IsNullOrEmpty(label), "Invalid label");
             Assert(!labelLine.Keys.Contains(label), string.Format("Label '{0}' already defined", label));
-            labelLine.Add(label, lineCounter);
+            labelLine.Add(label, line);
         }
 
         private static void CheckField(MicroField mf, string warningMessage)
@@ -633,7 +687,7 @@ namespace mcc
         {
             if (!condition)
             {
-                throw new MccException(lineCounter, exceptionMessage);
+                throw new MccException(lineCounter[currentFileName], exceptionMessage);
             }
         }
 

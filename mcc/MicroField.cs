@@ -410,7 +410,7 @@ namespace mcc
                 return DefaultValue;
             }
 
-            if (GetValueAndMask(token, out value, out mask, null))
+            if (GetValueAndMask(token, out value, out mask, targets))
             {
                 Assert(mask == 0, $"Trying to assign masked value to '{Label}' (call from line {sourceLine})");
                 // lookup if in matching any valid range

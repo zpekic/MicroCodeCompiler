@@ -195,24 +195,18 @@ namespace mcc
                 {
                     bStr = GetBinaryString(mf.FindValue(value_if, null, LineNumber), mf.Width);
                     fdList.Add(new FieldData(".if", false, $"{bStr}_", $" if ({bStr})"));
-                    //uiBuilder.Append($"{bStr}_");
-                    //miBuilder.Append($" if ({bStr})");
                     continue;
                 }
                 if (mf is mcc.FieldThen)
                 {
                     bStr = GetBinaryString(mf.FindValue(value_then, labelOrg, LineNumber), mf.Width);
                     fdList.Add(new FieldData(".then", false, $"{bStr}_", $" then {bStr}"));
-                    //uiBuilder.Append($"{bStr}_");
-                    //miBuilder.Append($" then {bStr}");
                     continue;
                 }
                 if (mf is mcc.FieldElse)
                 {
                     bStr = GetBinaryString(mf.FindValue(value_else, labelOrg, LineNumber), mf.Width);
                     fdList.Add(new FieldData(".else", string.IsNullOrEmpty(value_else), $"{bStr}_", $" else {bStr},"));
-                    //uiBuilder.Append($"{bStr}_");
-                    //miBuilder.Append($" else {bStr},");
                     continue;
                 }
                 if (mf is mcc.FieldReg)
@@ -235,11 +229,10 @@ namespace mcc
                         // replacement field
                         if (!string.IsNullOrEmpty(reg))
                         {
-                            ReplaceOverlappedFields(mf, fdList, $"{bStr}_", $" {mf.Label} <= {bStr},");
+                            ReplaceOverlappedFields(mf.OverlappingFields, ref fdList, $".regfield { mf.Label}");
+                            fdList.Add(new FieldData(mf.Label, string.IsNullOrEmpty(reg), $"{bStr}_", $" {mf.Label} = {bStr},"));
                         }
                     }
-                    //uiBuilder.Append($"{bStr}_");
-                    //miBuilder.Append($" {mf.Label} <= {bStr},");
                     continue;
                 }
                 if (mf is mcc.FieldVal)
@@ -262,17 +255,16 @@ namespace mcc
                         // replacement field
                         if (!string.IsNullOrEmpty(val))
                         {
-                            ReplaceOverlappedFields(mf, fdList, $"{bStr}_", $" {mf.Label} = {bStr},");
+                            ReplaceOverlappedFields(mf.OverlappingFields, ref fdList, $".valfield { mf.Label}");
+                            fdList.Add(new FieldData(mf.Label, string.IsNullOrEmpty(val), $"{bStr}_", $" {mf.Label} = {bStr},"));
                         }
                     }
-                    //uiBuilder.Append($"{bStr}_");
-                    //miBuilder.Append($" {mf.Label} = {bStr},");
                     continue;
                 }
             }
 
             // put together data and description strings
-            foreach(FieldData fd in fdList)
+            foreach (FieldData fd in fdList)
             {
                 if (!string.IsNullOrEmpty(fd.Label))
                 {
@@ -292,31 +284,15 @@ namespace mcc
             memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), miBuilder.ToString(), false, "code");
         }
 
-        private void ReplaceOverlappedFields(MicroField mf, List<FieldData> fdList, string value, string description)
+        private void ReplaceOverlappedFields(List<MicroField> overlappingFields, ref List<FieldData> fdList, string err)
         {
-            // not empty, check if all fields to replace with are empty.
-            bool replace = true;
-            foreach (MicroField of in mf.OverlappingFields)
+            foreach (MicroField of in overlappingFields)
             {
-                for (int i = 0; i < fdList.Count; i++)
+                FieldData fd = fdList.Find(x => x.Label.Equals(of.Label, StringComparison.InvariantCultureIgnoreCase));
+                if (!string.IsNullOrEmpty(fd.Label))
                 {
-                    FieldData fd = fdList[i];
-                    if (of.Label.Equals(fd.Label, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        Assert(fd.IsEmpty, $"Field '{fd.Label}' cannot be replaced with field '{of.Label}' because it is not empty.");     // If at least one is not empty, that is an error
-                        if (replace)
-                        {
-                            fd.Label = of.Label;
-                            fd.IsEmpty = false;
-                            fd.Value = value;
-                            fd.Description = description;
-                            replace = false;
-                        }
-                        else
-                        {
-                            fd.Label = null;    // invalidate it
-                        }
-                    }
+                    Assert(fd.IsEmpty, $"{err} is trying to replace field '{fd.Label}' which is not empty");
+                    fdList.Remove(fd);
                 }
             }
         }
