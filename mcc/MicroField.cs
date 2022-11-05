@@ -452,7 +452,7 @@ namespace mcc
                         }
                     }
                 }
-                Assert(false, string.Format("Token '{0}' could not be resolved for '{1}' (call from line {2})", token, Label, sourceLine.ToString()));
+                Assert(false, $"Token '{token}' could not be resolved for '{Label}' (call from line {sourceLine.ToString()})");
             }
 
             Assert(true, string.Format("Invalid value for '{0}' (call from line {1})", Label, sourceLine.ToString()));

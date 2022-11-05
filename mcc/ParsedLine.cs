@@ -15,6 +15,18 @@ namespace mcc
         public string Content;
         protected Logger logger;
 
+        protected static Dictionary<char, int> binOps = new Dictionary<char, int>()
+            {
+                {'^', 1},   // XOR
+                {'|', 1},   // OR
+                {'&', 2},   // AND
+                {'-', 4},   // SUB
+                {'+', 4},   // ADD
+                {'%', 5},   // MOD
+                {'/', 5},   // DIV
+                {'*', 5}    // MUL
+            };
+
         protected static Dictionary<string, string> Bin2Hex = new Dictionary<string, string>()
         {
             { "0000", "0"}, { "0001", "1"}, { "0010", "2"}, { "0011", "3"}, { "0100", "4"}, { "0101", "5"}, { "0110", "6"}, { "0111", "7"},
@@ -130,35 +142,73 @@ namespace mcc
         {
             value = 0;
             mask = 0;
-            char[] binOps = new char[] {'*', '/', '%', '+', '-', '&', '|', '^' }; // ordered by precendence!
             int valueLeft, valueRight;
+            int lowestPri = int.MaxValue;
+            char lowestOps = ' ';
+            int lowestPos = -1;
 
+            // remove blanks around
             string input = v.Trim();
+            // remove redundant () around
+            while (input.StartsWith("("))
+            {
+                if (input.EndsWith(")"))
+                {
+                    input = input.Substring(1);
+                    input = input.Substring(0, input.Length - 1);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
             if (string.IsNullOrEmpty(input))
             {
                 return false;
             }
 
             // super simple and lame recursive expression evaluator!
-            // does not support changing of precedence using ()
-            foreach (char opChar in binOps)
+            foreach (char opChar in binOps.Keys)
             {
+                int pLevel = 0;
                 if (input.Contains(opChar))
                 {
-                    int opCharPos = -1;
                     bool singleQuote = false;
                     bool doubleQuote = false;
 
-                    for (int charPos = 0; charPos < input.Length && (opCharPos < 0); charPos++)
+                    for (int charPos = 0; charPos < input.Length; charPos++)
                     {
                         if ((input[charPos] == opChar) && (!singleQuote) && (!doubleQuote))
                         {
-                            opCharPos = charPos;
+                            int currentPri = (10 * pLevel) + binOps[opChar];
+                            if (currentPri <= lowestPri)
+                            {
+                                lowestPri = currentPri;
+                                lowestOps = opChar;
+                                lowestPos = charPos;
+                            }
+                            else
+                            {
+                                continue;
+                            }
                         }
                         else
                         {
                             switch (input[charPos])
                             {
+                                case '(':
+                                    if (!singleQuote && !doubleQuote)
+                                    {
+                                        pLevel++;
+                                    }
+                                    break;
+                                case ')':
+                                    if (!singleQuote && !doubleQuote)
+                                    {
+                                        pLevel--;
+                                    }
+                                    break;
                                 case '"':
                                     if (!singleQuote)
                                     {
@@ -177,42 +227,44 @@ namespace mcc
                         }
                     }
 
-                    if ((opCharPos >= 0) && GetValueAndMask(input.Substring(0, opCharPos), out valueLeft, out mask, targets))
-                    {
-                        if (GetValueAndMask(input.Substring(opCharPos + 1), out valueRight, out mask, targets))
-                        {
-                            switch (opChar)
-                            {
-                                case '*':
-                                    value = valueLeft * valueRight;
-                                    return true;
-                                case '/':
-                                    value = valueLeft / valueRight;
-                                    return true;
-                                case '%':
-                                    value = valueLeft % valueRight;
-                                    return true;
-                                case '+':
-                                    value = valueLeft + valueRight;
-                                    return true;
-                                case '-':
-                                    value = valueLeft - valueRight;
-                                    return true;
-                                case '&':
-                                    value = valueLeft & valueRight;
-                                    return true;
-                                case '|':
-                                    value = valueLeft | valueRight;
-                                    return true;
-                                case '^':
-                                    value = valueLeft & valueRight;
-                                    return true;
-                                default:
-                                    return false; // failure!
-                            }
-                        }
-                    }
+                    Assert(pLevel == 0, $"Parenthesis mismatch in {input}");
+                }
 
+            }
+
+            if ((lowestPos >= 0) && GetValueAndMask(input.Substring(0, lowestPos), out valueLeft, out mask, targets))
+                {
+                    if (GetValueAndMask(input.Substring(lowestPos + 1), out valueRight, out mask, targets))
+                    {
+                        switch (lowestOps)
+                        {
+                            case '*':
+                                value = valueLeft * valueRight;
+                                return true;
+                            case '/':
+                                value = valueLeft / valueRight;
+                                return true;
+                            case '%':
+                                value = valueLeft % valueRight;
+                                return true;
+                            case '+':
+                                value = valueLeft + valueRight;
+                                return true;
+                            case '-':
+                                value = valueLeft - valueRight;
+                                return true;
+                            case '&':
+                                value = valueLeft & valueRight;
+                                return true;
+                            case '|':
+                                value = valueLeft | valueRight;
+                                return true;
+                            case '^':
+                                value = valueLeft ^ valueRight;
+                                return true;
+                            default:
+                                return false; // failure!
+                    }
                 }
             }
 
@@ -496,6 +548,38 @@ namespace mcc
                 return true;
             }
 
+            return false;
+        }
+
+        public static bool IsValidSymbolName(string name, out string whyNot)
+        {
+            whyNot = string.Empty;
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                bool first = true;
+                foreach (char c in name)
+                {
+                    if (c == '_')
+                    {
+                        continue;
+                    }
+                    if (first ? char.IsLetter(c) : char.IsLetterOrDigit(c))
+                    {
+                        first = false;
+                        continue;
+                    }
+                    else
+                    {
+                        whyNot = $"Symbol {name} is expected to start with a letter or _, and then continue with letter / digit / _";
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            whyNot = "Missing or empty symbol name";
             return false;
         }
 
