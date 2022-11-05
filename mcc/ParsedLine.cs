@@ -16,7 +16,7 @@ namespace mcc
         protected Logger logger;
 
         protected static Dictionary<char, int> binOps = new Dictionary<char, int>()
-            {
+            {   // ordered in increasing priority to allow for optimization
                 {'^', 1},   // XOR
                 {'|', 1},   // OR
                 {'&', 2},   // AND
@@ -172,7 +172,8 @@ namespace mcc
             foreach (char opChar in binOps.Keys)
             {
                 int pLevel = 0;
-                if (input.Contains(opChar))
+                // because we search for binary operators in incremental priority order, if we found one means next one is higher priority so skip it
+                if ((lowestPri > 9) && input.Contains(opChar))
                 {
                     bool singleQuote = false;
                     bool doubleQuote = false;
@@ -390,10 +391,7 @@ namespace mcc
                         switch (power)
                         {
                             case 0:
-                                if (c == 'b')
-                                {
-                                    power = 2;
-                                }
+                                power = (c == 'b' ? 2 : power) ;
                                 break;
                             case 16:
                                 value = value * power + ((int)c - (int) 'a' + 10);
@@ -416,10 +414,7 @@ namespace mcc
                         switch (power)
                         {
                             case 0:
-                                if (c == 'B')
-                                {
-                                    power = 2;
-                                }
+                                power = (c == 'B' ? 2 : power);
                                 break;
                             case 16:
                                 value = value * power + ((int)c - (int)'A' + 10);
@@ -691,15 +686,33 @@ namespace mcc
             Assert(length > 0, "Constant length must be > 0");
             switch (length)
             {
-                case 1:
-                    if (value == 0)
+                case 1: // VHDL peculiarity that single bit values must be under single quotes
+                    switch (value)
                     {
-                        return "'0'";
+                        case 0:
+                            return "'0'";
+                        case 1:
+                            return "'1'";
+                        default:
+                            break;
                     }
-                    if (value == 1)
+                    Assert(true, $"Unexpected value of {value} can't fit into field of length {length}");
+                    break;
+
+                case 2: // 2-bit fields are frequent so handle them in hard-coded way
+                    switch (value)
                     {
-                        return "'1'";
-                    }
+                        case 0:
+                            return "\"00\"";
+                        case 1:
+                            return "\"01\"";
+                        case 2:
+                            return "\"10\"";
+                        case 3:
+                            return "\"11\"";
+                        default:
+                            break;
+                    };
                     Assert(true, $"Unexpected value of {value} can't fit into field of length {length}");
                     break;
 
