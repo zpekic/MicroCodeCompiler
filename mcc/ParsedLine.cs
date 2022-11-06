@@ -142,7 +142,10 @@ namespace mcc
         {
             value = 0;
             mask = 0;
-            int valueLeft, valueRight;
+            // expression evaluation is implemented by creating a recursive binary tree split by the binary operators
+            // at each level, the operator with lowest priority is found (this takes into account parenthesis levels)
+            // to generate a "left-side" and "right-side" terms. Eventually these terms are constant or value leaf-nodes,
+            // at which point they can be directly evaluated and resulting value passed to higher stack level.
             int lowestPri = int.MaxValue;
             char lowestOps = ' ';
             int lowestPos = -1;
@@ -233,10 +236,12 @@ namespace mcc
 
             }
 
-            if ((lowestPos >= 0) && GetValueAndMask(input.Substring(0, lowestPos), out valueLeft, out mask, targets))
+            // lowest priority binary operator found on this level, now recursively evaluate left and rigth values for it
+            if ((lowestPos >= 0) && GetValueAndMask(input.Substring(0, lowestPos), out int valueLeft, out mask, targets))
                 {
-                    if (GetValueAndMask(input.Substring(lowestPos + 1), out valueRight, out mask, targets))
+                    if (GetValueAndMask(input.Substring(lowestPos + 1), out int valueRight, out mask, targets))
                     {
+                        // both values are available, execute operation
                         switch (lowestOps)
                         {
                             case '*':
@@ -533,10 +538,9 @@ namespace mcc
 
         private bool TryFloat(string input, out int value)
         {
-            float f;
             value = 0;
 
-            if (float.TryParse(input, out f))
+            if (float.TryParse(input, out float f))
             {
                 // get the bytes representing the FP value, and return them as if they were an integer
                 value = BitConverter.ToInt32(BitConverter.GetBytes(f), 0);

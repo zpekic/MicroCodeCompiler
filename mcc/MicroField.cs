@@ -426,7 +426,7 @@ namespace mcc
                         return value; // it is ok, found in one of the ranges
                     }
                 }
-                Assert(false, string.Format("Value '{0}' out of accepted ranges for '{1}' (call from line {2})", value.ToString(), Label, sourceLine.ToString()));
+                Assert(false, $"Value '{value.ToString()}' out of accepted ranges for '{Label}' (call from line {sourceLine.ToString()})");
             }
             else
             {
