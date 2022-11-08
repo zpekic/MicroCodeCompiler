@@ -20,8 +20,8 @@ namespace mcc
                 {'^', 1},   // XOR
                 {'|', 1},   // OR
                 {'&', 2},   // AND
-                {'-', 4},   // SUB
                 {'+', 4},   // ADD
+                {'-', 4},   // SUB
                 {'%', 5},   // MOD
                 {'/', 5},   // DIV
                 {'*', 5}    // MUL
@@ -142,6 +142,7 @@ namespace mcc
         {
             value = 0;
             mask = 0;
+            int valueLeft;
             // expression evaluation is implemented by creating a recursive binary tree split by the binary operators
             // at each level, the operator with lowest priority is found (this takes into account parenthesis levels)
             // to generate a "left-side" and "right-side" terms. Eventually these terms are constant or value leaf-nodes,
@@ -149,6 +150,7 @@ namespace mcc
             int lowestPri = int.MaxValue;
             char lowestOps = ' ';
             int lowestPos = -1;
+            bool lowestUno = false;
 
             // remove blanks around
             string input = v.Trim();
@@ -180,10 +182,12 @@ namespace mcc
                 {
                     bool singleQuote = false;
                     bool doubleQuote = false;
+                    char previousChar = ' ';
 
                     for (int charPos = 0; charPos < input.Length; charPos++)
                     {
-                        if ((input[charPos] == opChar) && (!singleQuote) && (!doubleQuote))
+                        char currentChar = input[charPos];
+                        if ((currentChar == opChar) && (!singleQuote) && (!doubleQuote))
                         {
                             int currentPri = (10 * pLevel) + binOps[opChar];
                             if (currentPri <= lowestPri)
@@ -191,6 +195,7 @@ namespace mcc
                                 lowestPri = currentPri;
                                 lowestOps = opChar;
                                 lowestPos = charPos;
+                                lowestUno = IsUnaryOp(currentChar, previousChar);
                             }
                             else
                             {
@@ -199,7 +204,7 @@ namespace mcc
                         }
                         else
                         {
-                            switch (input[charPos])
+                            switch (currentChar)
                             {
                                 case '(':
                                     if (!singleQuote && !doubleQuote)
@@ -229,6 +234,8 @@ namespace mcc
                                     break;
                             }
                         }
+
+                        previousChar = char.IsWhiteSpace(currentChar) ? previousChar : currentChar;
                     }
 
                     Assert(pLevel == 0, $"Parenthesis mismatch in {input}");
@@ -237,39 +244,52 @@ namespace mcc
             }
 
             // lowest priority binary operator found on this level, now recursively evaluate left and rigth values for it
-            if ((lowestPos >= 0) && GetValueAndMask(input.Substring(0, lowestPos), out int valueLeft, out mask, targets))
+            if (lowestPos >= 0)
+            {
+                bool validLeft;
+
+                if (lowestUno)
                 {
-                    if (GetValueAndMask(input.Substring(lowestPos + 1), out int valueRight, out mask, targets))
+                    // for unary operator, "fake" the left side to be 0 
+                    valueLeft = 0;
+                    validLeft = true;
+                }
+                else
+                {
+                    // binary operator, try to get left side expression recursively
+                    validLeft = GetValueAndMask(input.Substring(0, lowestPos), out valueLeft, out mask, targets);
+                }
+                if (validLeft && GetValueAndMask(input.Substring(lowestPos + 1), out int valueRight, out mask, targets))
+                {
+                    // both values are available, execute binary operation
+                    switch (lowestOps)
                     {
-                        // both values are available, execute operation
-                        switch (lowestOps)
-                        {
-                            case '*':
-                                value = valueLeft * valueRight;
-                                return true;
-                            case '/':
-                                value = valueLeft / valueRight;
-                                return true;
-                            case '%':
-                                value = valueLeft % valueRight;
-                                return true;
-                            case '+':
-                                value = valueLeft + valueRight;
-                                return true;
-                            case '-':
-                                value = valueLeft - valueRight;
-                                return true;
-                            case '&':
-                                value = valueLeft & valueRight;
-                                return true;
-                            case '|':
-                                value = valueLeft | valueRight;
-                                return true;
-                            case '^':
-                                value = valueLeft ^ valueRight;
-                                return true;
-                            default:
-                                return false; // failure!
+                        case '*':
+                            value = valueLeft * valueRight;
+                            return true;
+                        case '/':
+                            value = valueLeft / valueRight;
+                            return true;
+                        case '%':
+                            value = valueLeft % valueRight;
+                            return true;
+                        case '+':
+                            value = valueLeft + valueRight;
+                            return true;
+                        case '-':
+                            value = valueLeft - valueRight;
+                            return true;
+                        case '&':
+                            value = valueLeft & valueRight;
+                            return true;
+                        case '|':
+                            value = valueLeft | valueRight;
+                            return true;
+                        case '^':
+                            value = valueLeft ^ valueRight;
+                            return true;
+                        default:
+                            return false; // failure!
                     }
                 }
             }
@@ -305,12 +325,12 @@ namespace mcc
                 string label = input.Substring(1).Trim();
                 if (!string.IsNullOrEmpty(label))
                 {
-                    logger.WriteLine(string.Format("Warning: line {0} - label '{1}' after $ ignored" , LineNumber.ToString(), label));
+                    logger.WriteLine(string.Format("Warning: line {0} - label '{1}' after $ ignored", LineNumber.ToString(), label));
                 }
                 value = this.OrgValue;
                 return true;
             }
-
+ 
             int power = -1; // meaning not determined yet
             char[] chars = input.ToCharArray();
             foreach(char c in chars)
@@ -545,6 +565,33 @@ namespace mcc
                 // get the bytes representing the FP value, and return them as if they were an integer
                 value = BitConverter.ToInt32(BitConverter.GetBytes(f), 0);
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsUnaryOp(char oper, char previous)
+        {
+            if ((oper == '-') || (oper == '+'))
+            {
+                switch (previous)
+                {
+                    case ' ': // indicates beginning of expression
+                        return true;
+                    case '(': // such as (-3 ...)
+                        return true;
+                    default:
+                        foreach(char op in binOps.Keys)
+                        {
+                            if (op == previous)
+                            {
+                                return true;
+                            }
+                        }
+                        break;
+                }
+
+                return false;
             }
 
             return false;
