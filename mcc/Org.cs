@@ -25,7 +25,17 @@ namespace mcc
 
         public int GetUpdatedOrgValue(int currentOrgValue)
         {
-            return OrgValue < 0 ? currentOrgValue : OrgValue;
+            if (OrgValue < 0)
+            {
+                return currentOrgValue;
+            }
+            else
+            {
+                Assert(OrgValue >= currentOrgValue, $"Trying to set .org value to {OrgValue} (0x{OrgValue:X4}) which is below current value of {currentOrgValue} (0x{currentOrgValue:X4}).");
+
+                logger.WriteLine($"Warning: .org value changed from {currentOrgValue} (0x{currentOrgValue:X4}) to {OrgValue} (0x{OrgValue:X4})");
+                return OrgValue;
+            }
         }
     }
 }

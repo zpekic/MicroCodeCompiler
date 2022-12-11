@@ -533,7 +533,7 @@ namespace mcc
                 CheckField(checkFe, ".else field not defined, code might not compile or work");
             }
 
-            logger.WriteLine($"Success: pass 1 {lineCounter.ToString()} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
+            logger.WriteLine($"Success: pass 1 {lineCounter[sourceFileName]} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
         }
         
         private static void Pass1(string sourceFileName, bool assemblyMode)
