@@ -1,0 +1,203 @@
+//----------------------------------------------------------
+//	 Screen TTY Microcode (c) 2020-... zpekic@hotmail.com
+// Compile with https://github.com/zpekic/MicroCodeCompiler
+// See https://hackaday.io/project/182959-custom-circuit-testing-using-intel-hex-files/log/201614-micro-coded-controller-deep-dive
+//----------------------------------------------------------
+
+			// microcode size is 64 locations, each 27 bits long
+			// microcode content will be generated in all currently available formats, but only .vhd file is used in this project
+			.code 6, 27, tty_screen_code.mif, tty_screen_code.cgf, tty:tty_screen_code.vhd, tty_screen_code.hex, tty_screen_code.bin, 4;
+
+			// mapper size is 128 words (as 7-bit ASCII code is used as "instruction") by 6 bits (to point to 1 of 64 microcode start locations)
+			// also generate all memory file formats. Note prefix: for .vhd, which is used to prepend to all generated aliases and constants
+			// this way multiple microcoded controllers can coexist in the same project even if their microfield have same name
+			.mapper 7, 6, tty_screen_map.mif, tty_screen_map.cgf, tty:tty_screen_map.vhd, tty_screen_map.hex, tty_screen_map.bin, 1;
+
+			// controller generated will have a 2 level hardware return stack and will advance on low to high clock transition
+			.controller tty_control_unit.vhd, 2, rising;
+
+			// MCC microengines are largely "horizontal" microcoded. Fields adding up to whole microinstruction must be defined first
+			// order of definition and width of fields determines their position in microinstruction
+
+			// 4 states to indicate the status of the TTY
+			// valfield means the value is supposed to be present ONLY DURING CURRENT microinstruction AND WILL NOT BE PRESERVED
+			// = assignment must be used in the code for such fields
+			// given fields are defined MSB to LSB, ready will occupy microinstruction[31..30]
+			// all microfields must have a default value - this allows implicit generation of microinstruction field assignments
+ready:		.valfield 2 values 
+				no,
+				char_is_zero,
+				yes,
+				- default no;
+
+			// microcontroller also consumes microinstruction fields, first 3 bits to select an IF condition
+			// true and false are handy to have around in all designs
+			// assignment only through IF condition THEN target_true ELSE target_false
+seq_cond:	.if 3 values 
+			true, 			// hard-code to 1
+			char_is_zero,	// all branch conditions needed by the design must be listed and brought into a n to 1 MUX
+			cursorx_ge_maxcol,
+			cursory_ge_maxrow,
+			cursorx_is_zero,
+			cursory_is_zero,
+			memory_ready,
+			false			// hard-code to 0
+			default true;
+			
+			// then 6 bits (because need to jump/call 64 locations) to specify THEN (to select if condition is true)
+seq_then:	.then 6 values 
+			next, 			// uPC <= uPC + 1
+			repeat, 		// uPC <= uPC
+			return, 		// uPC <= saved uPC
+			fork, 
+			@ default next;	// any label
+
+			// then 6 values for ELSE (to select if condition is false)
+seq_else:	.else 6 values 
+			next, 
+			repeat, 
+			return, 
+			fork, 
+			0x00..0x3F, @ default next;	// any label or valid range value (allow field to be reused for constant
+			
+			// Screen cursor X position can stay the same, increment, decrement, or be set to maxcol
+			// regfield means value will be SET AT THE END OF CURRENT MICROINSTRUCTION and WILL BE PRESERVED
+			// <= assignment must be used
+cursorx:	.regfield 3 values 
+			same, 
+			zero, 					// left position
+			inc, 					// simple incrementer will be generated
+			dec, 					// simple decrementer will be generated
+			maxcol default same;	// can be static or changed at reset time
+
+			// Screen cursor Y position can stay the same, increment, decrement, or be set to maxcol
+cursory:	.regfield 3 values 
+			same, 
+			zero, 					// top position
+			inc, 
+			dec, 
+			maxrow default same;
+
+			// buffer for memory value, 
+data:		.regfield 2 values 
+			same, 
+			char,					// from ASCII character port input 
+			memory, 				// from video memory
+			space default same;		// space is used to clear video memory
+
+			// video memory control bus, note that ordering of labels can be conveniently used to generate /RD and /WR signals
+mem:		.valfield 2 values
+			nop,			// no memory access
+			read,			// mem(0) is RD
+			write,			// mem(1) is WR
+			-				// forbid read and write at same time
+			default nop;
+
+// useful aliases
+goto:		.alias if false then next else;
+return:		.alias if false then next else return;
+noop:		.alias if true then next else next;
+
+// define subroutines
+writeMem	.sub;	// equivalent to 'if true then printChar else printChar' - control unit recognizes both labels same and executes a subroutine call
+readMem		.sub;	// note no regfield parameters, so must be called with readMem();
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations (starting label with _ will prevent use as target)
+//	---------------------------------------------------------------------------
+_reset:		noop;  
+
+_reset1:	noop;
+
+_reset2:	noop;
+
+_reset3:	cursorx <= zero, cursory <= zero; 
+
+waitChar:	ready = char_is_zero, data <= char,
+			if char_is_zero then repeat else next;
+			
+			if true then fork else fork;	// interpret the ASCII code of char in data register as "instruction"
+
+
+			.map 0b???_????;		// default to printable character handler 
+main:		writeMem();
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then next else nextChar;
+
+			cursorx <= zero,
+			goto LF;
+
+			.map 0b00?_????;		// special characters 00-1F are not printable, so just ignore
+nextChar:	ready = yes,
+			if char_is_zero then waitChar else repeat;
+
+			.map 0b000_0001;		// 0x01 SOH == clear screen
+CLS:		data <= space, cursory <= zero;
+
+nextRow:	cursorx <= zero;
+			
+nextCol:	writeMem();
+
+			cursorx <= inc;
+
+			if cursorx_ge_maxcol then next else nextCol;
+
+			cursory <= inc;
+
+			if cursory_ge_maxrow then HOME else nextRow;
+
+			.map 0b000_0010;		// 0x02 STX == home
+HOME:		cursorx <= zero, cursory <= zero,
+			goto nextChar;
+
+			.map 0b000_1010;		// 0x0A LF (line feed)
+LF:			cursory <= inc;
+			
+			if cursory_ge_maxrow then next else nextChar;
+
+scrollUp:	cursory <= zero;
+			
+copyRow:	if cursory_ge_maxrow then lastLine else next;
+
+			cursorx <= zero;
+
+copyCol:	if cursorx_ge_maxcol then nextY else next;
+
+			cursory <= inc, 
+			readMem();
+			
+			cursory <= dec,
+			writeMem();
+
+			cursorx <= inc,
+			goto copyCol;
+
+nextY:		cursory <= inc,
+			goto copyRow;
+
+lastLine:	data <= space, cursory <= dec, cursorx <= zero;
+
+clearCol:	if cursorx_ge_maxcol then CR else next;
+
+			writeMem();
+
+			cursorx <= inc,
+			goto clearCol;
+
+			.map 0b000_1101;		// 0x0D CR (carriage return)
+CR:			cursorx <= zero,
+			goto nextChar;
+
+writeMem:	if memory_ready then next else repeat;	// wait for video memory
+
+			mem = write,							// data reg is connected to dout
+			return;
+
+readMem:	if memory_ready then next else repeat;	// wait for video memory
+
+			mem = read, data <= memory,				// data reg loads from din
+			return;
+
+		

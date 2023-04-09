@@ -1,0 +1,221 @@
+//---------------------------------------------------------------------------------------------
+//	Hello World test code for EMZ1001 (c) 2022-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//---------------------------------------------------------------------------------------------
+// Test code to load into internal 1k ROM of Iskra EMZ1001 (AMI S2000) 4-bit microcontroller
+// http://www.bitsavers.org/components/ami/s2000/
+// Full description: 
+// https://hackaday.io/project/188614-iskra-emz1001a-a-virtual-resurrection/log/214195-test-code-hello-world
+//---------------------------------------------------------------------------------------------
+			.code 10, 8, helloworld_code.mif, helloworld_code.cgf, helloworld_code.coe, hlw:helloworld_code.vhd, helloworld_code.hex, helloworld_code.bin, 1;
+			.symbol 10, 256, helloworld_sym.mif, helloworld_sym.cgf, helloworld_sym.coe, hlw:helloworld_sym.vhd, helloworld_sym.hex, helloworld_sym.bin, 32;
+
+#include "emz1001.mcc";
+
+CR:			.alias 0xD;			// ASCII code, carriage return
+LF:			.alias 0xA;			// ASCII code, newline
+LED_SPACE:	.alias 0b00000000;	// LED segment patterns
+LED_H:		.alias 0b00110111;	// H
+LED_E:		.alias 0b01001111;	// E
+LED_L:		.alias 0b00001110;	// L
+LED_O:		.alias 0b00011101;	// o
+LED_W:		.alias 0b00111111;	// close enough
+LED_R:		.alias 0b00000101;	// r
+LED_D:		.alias 0b00111101;	// d
+LED_EXCL:	.alias 0b10110000;	// ! (note decimal point is on)
+OUT_READY:	.alias 1;			// mask for I inputs
+
+//	---------------------------------------------------------------------------
+			.org 0;
+//	Execution starts at bank 0, page 0, location 0
+//	---------------------------------------------------------------------------
+			NOP;
+			
+			LAI 0b1000;		// bit3 = 50Hz, bit0 = invert D lines on output
+			EUR;			// set prescaler and inverter
+						
+			LBF 0b10;		// select current column (2), BL = 15
+			PSH;			// set all A lines high
+			MVS;			// all anodes high
+			XCD 0b00;		// BL = 14, keep BU
+			PSH;			// drive D lines, do not float them
+			XCD 0b00;		// BL = 13, keep BU
+			PSL;			// set static operation 
+			
+			JMS INIT_LED1;	// store LED char patterns in memory
+			JMS INIT_LED0;
+			
+GREETINGS:	LBZ 0b11;		// BU = 3, BL = 0 
+			JMS CRLF;		// empty line
+			JMS H;			// output character by characted on D port, with nEXT strobe
+			JMS E;
+			JMS L;
+			JMS L;
+			JMS O;
+			JMS SPACE;
+			JMS W;
+			JMS O;
+			JMS R;
+			JMS L;
+			JMS D;
+			JMS EXCPOINT;
+			JMS CRLF;
+			
+DISPLOOP:	JMS DISP_LED;	// Refresh 7-seg display
+			SOS;			// check if 1 second lapsed
+			JMP DISPLOOP;	// no, continue refreshing LEDs as fast as possible
+			LBF 0b00;
+			JMS ROTATE;		// yes, rotate the marquee, RAM bank 0
+			LBF 0b01;
+			JMS ROTATE;		// RAM bank 1 to keep them in sync
+			JMP GREETINGS;	// continue ad infinitum
+
+//	---------------------------------------------------------------------------
+			.org 0b1101000000;
+//	Page 13 for more subroutines
+// ----------------------------------------------------------------------------
+INITLED1_:	LBF 1;			// RAM bank 1 holds lower nibble of LED patterns
+			JMS CLEAR4;		// clear locations 15, 14, 13, 12
+			LAI LED_H / 16;	// store and decrement BU, leftmost is H (location 12) 
+			XCD 0b00;
+			LAI LED_E / 16;
+			XCD 0b00;
+			LAI LED_L / 16;
+			XCD 0b00;
+			LAI LED_L / 16;
+			XCD 0b00;
+			LAI LED_O / 16;
+			XCD 0b00;
+			LAI LED_SPACE / 16;
+			XCD 0b00;
+			LAI LED_W / 16;
+			XCD 0b00;
+			LAI LED_O / 16;
+			XCD 0b00;
+			LAI LED_R / 16;
+			XCD 0b00;
+			LAI LED_L / 16;
+			XCD 0b00;
+			LAI LED_D / 16;
+			XCD 0b00;
+			LAI LED_EXCL / 16;	// rightmost is ! (location 0)
+			JMP INIT_DONE;		// store and return
+
+INITLED0_:	LBF 0;				// RAM bank 0 holds upper nibble of LED patterns
+			JMS CLEAR4;
+			LAI 0xF & LED_H;
+			XCD 0b00;
+			LAI 0xF & LED_E;
+			XCD 0b00;
+			LAI 0xF & LED_L;
+			XCD 0b00;
+			LAI 0xF & LED_L;
+			XCD 0b00;
+			LAI 0xF & LED_O;
+			XCD 0b00;
+			LAI 0xF & LED_SPACE;
+			XCD 0b00;
+			LAI 0xF & LED_W;
+			XCD 0b00;
+			LAI 0xF & LED_O;
+			XCD 0b00;
+			LAI 0xF & LED_R;
+			XCD 0b00;
+			LAI 0xF & LED_L;
+			XCD 0b00;
+			LAI 0xF & LED_D;
+			XCD 0b00;
+			LAI 0xF & LED_EXCL;
+INIT_DONE:	XCD 0b00;
+			RT;					// don't care for condition, just return
+			RT;
+
+//	---------------------------------------------------------------------------
+			.org 0b1110000000;
+//	Page 14 in the bank is for the subroutines overflow
+// ----------------------------------------------------------------------------
+DISP_LED_:	LAI 12;			// start displaying at digit 12 
+			XAE;			// 
+			LBE	0b00;		// BL = 12, BU = 0
+LEDLOOP:	LAM 0b01;		// A <= M[0, BL], BU = 1
+			DISB;			// direct pattern to D outputs (inverted)
+			PSL;			// prepare digit low (on)
+			MVS;			// update A pins (A[BL] <= '0')
+			NOP;			// delay to keep it lit for a bit
+			NOP;
+			PSH;			// prepare digit high (off)
+			MVS;			// update A pins (A[BL] <= '1')
+			LAM 0b00;
+			XCD	0b01;		// next, change column to 0
+			JMP LEDLOOP;			
+			RT;
+			
+//	---------------------------------------------------------------------------
+			.org 0b1111000000;
+//	Page 15 in the bank is the default place for subroutines
+// ----------------------------------------------------------------------------			
+ROTATE:		LAM 0b00;	// A = M[x, 15]
+			XCI 0b00;	// BL is now 0
+			NOP;
+ROTLOOP:	XCI 0b00;	// deposit from previously visited memory cell, increment BL
+			JMP ROTLOOP;// continue until all visited
+			RT;
+			
+INIT_LED0:	PP 13;			// JMS implicitly calls into page 15, so from here dispatch to page 13
+			JMP INITLED0_;	// using half of 64 nibble RAM as constant storage!!
+			
+INIT_LED1: 	PP 13;
+			JMP INITLED1_;
+
+DISP_LED:	PP 14;
+			JMP DISP_LED_;
+				
+CRLF:		LAI CR;
+			JMS OUT_0;		// old assembly trick
+			LAI LF;
+OUT_0:		RSM 3;			// set current RAM location to 0
+			RSM 2;
+OUT_xx00:	RSM 1;
+OUT_xxx0:	RSM 0;
+UART_OUT:	OUT;
+UART_WAIT:	LAI OUT_READY;	// connected to pins 0, 1 of I inputs
+			SZI;			// skip if low
+			RT;				// signal high, ready
+			JMP UART_WAIT;	// signal low, not ready
+			
+H:			LAI 0x0F & 'H';	// using EMZ1001A trick that in a sequence of LAIs only 1st one is executed!
+E:			LAI 0x0F & 'E';
+L:			LAI 0x0F & 'L';
+O:			LAI 0x0F & 'O';
+D:			LAI 0x0F & 'D';
+OUT_4:		RSM 3;			// high nibble is 0b0100 for these ASCII codes
+			STM 2;
+			JMP OUT_xx00;
+
+W:			LAI 0x0F & 'W';
+R:			LAI 0x0F & 'R';
+OUT_5:		RSM 3;			// high nibble is 0b0101 for these W and R ASCII codes
+			STM 2;
+			RSM 1;
+			STM 0;
+			JMP UART_OUT;
+			
+SPACE:		LAI 0x0F & ' ';
+EXCPOINT:	LAI 0x0F & '!';
+OUT_2:		RSM 3;
+			RSM 2;
+			STM 1;
+			JMP OUT_xxx0;
+
+CLEAR4:		LAI 0;			// clear 4 locations in RAM bank, going backwards
+			XCD 0b00;
+			NOP;			// don't care if we started at 15, just continue
+			LAI 0;
+			XCD 0b00;
+			LAI 0;
+			XCD 0b00;
+			LAI 0;
+			XCD 0b00;
+			RT;				// tiny bit faster than putting NOP here
+			RT;
+

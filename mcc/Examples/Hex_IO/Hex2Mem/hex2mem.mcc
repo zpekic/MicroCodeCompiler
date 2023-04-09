@@ -1,0 +1,417 @@
+//----------------------------------------------------------
+//	Hex2Mem Microcode (c) 2021-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//----------------------------------------------------------
+			.code 7, 48, hex2mem_code.mif, hex2mem_code.cgf, hex2mem_code.coe, h2m:hex2mem_code.vhd, hex2mem_code.hex, hex2mem_code.bin, 8;
+			.mapper 8, 7, hex2mem_map.mif, hex2mem_map.cgf, hex2mem_map.coe, h2m:hex2mem_map.vhd, hex2mem_map.hex, hex2mem_map.bin, 1;
+			.controller hex2mem_control_unit.vhd, 8;
+			.symbol 7, 256, hex2mem_sym.mif, hex2mem_sym.cgf, hex2mem_sym.coe, h2m:hex2mem_sym.vhd, hex2mem_sym.hex, hex2mem_sym.bin, 32;
+
+// System interface signals
+nBUSREQ			.valfield 1 values 0, 1 default 1;
+nWR				.valfield 1 values 0, 1 default 1;
+// nWAIT		consumed as condition
+// nBUSACK		consumed as condition
+// A(15..0)		
+// D(7..0)
+
+// Component interface signals
+BUSY			.valfield 1 values 0, 1 default 1;
+// RXD_READY	load input register on low to high transition
+
+// Serial UART sender interface signals
+// CHAR			8-bit ASCII or 0x00 if no char is to be sent
+// TXDREADY		sender is ready
+
+seq_cond:		.if 4 values 
+				true, 			// hard-code to 1
+				nWAIT,	 		// Z80 bus - 0 to wait for memory
+				nBUSACK,		// z80 bus - 0 if CPU is 
+				input_is_zero,	// do not process 0x00 input char
+				TXDREADY,		// high if tracer has processed the trace character
+				TXDSEND,		// will always be "1" but also generates a pulse to TXD
+				TRACE_ERROR,	// enable error tracing
+				TRACE_WRITE,	// enable memory write tracing
+				TRACE_CHAR,		// enable character tracing
+				bytecnt_at_colon,
+				hexcnt_is_odd,	// hexcnt bit 0 is 1
+				prev_is_crorlf,
+				prev_is_spaceortab,
+				compa_equals_compb,
+				resetout_done,	// wait for the external reset pulse to finish
+				false			// hard-code to 0
+				default true;
+seq_then:	.then 7 values next, repeat, return, fork, @ default next;				// any label
+seq_else:	.else 7 values next, repeat, return, fork, 0b000000..0b111111, @ default next;	// any value as it can be a trace char
+			
+// contains ASCII char for UART trasmit
+TXDCHAR		.regfield 5 values 
+				same,
+				char_F,
+				char_space,
+				char_cr,
+				char_lf,
+				char_E,			// 'E' in "ERR"
+				char_R,			// 'R' in "ERR"
+				char_I,
+				char_B,
+				char_A,
+				char_C,
+				char_EQU,
+				char_open,
+				char_close,
+				-,
+				zero,
+				// use bit 4 to lookup using HEX2ASCII table
+				pos_ram0,		// bcd counter for character position in line (when in ERR mode) or RAM output
+				pos_ram1,
+				inp0,
+				inp1,			// input character
+				lin_chk0,		// bcd counter for line (when in ERR mode) or checksum
+				lin_chk1,
+				lin_chk2,
+				lin_chk3,
+				bytecnt0,
+				bytecnt1,
+				addr0,
+				addr1,
+				addr2,
+				addr3,
+				flags,
+				errcode
+				default same;
+				
+// line counter 4-digit BCD
+lincnt_a: 		.valfield 1 values zero, lincnt default lincnt;	// select adder "a" input, "b" is always 0
+lincnt_cin:		.valfield 1 values 0, 1 default 0;			// drive carry in to increment
+			
+// position counter 4-digit BCD
+poscnt_a: 		.valfield 1 values zero, poscnt default poscnt;	// select adder "a" input, "b" is always 0
+poscnt_cin:		.valfield 1 values 0, 1 default 0;			// drive carry in to increment
+
+// 16-bit address register
+address:		.regfield 2 values
+				same,
+				inc,
+				shift8ram,
+				- 
+				default same;
+
+// internal RAM is 64*8, enough to hold a 32 byte record. Locations are:
+//	0x3B - colon (position only, not actually stored)
+// 	0x3C - length (usually 0x10)
+//	0x3D - address, high byte
+//	0x3E - address, low byte
+//	0x3F - type (usually 0x00)
+//	0x00 - <length - 1> - data bytes from the HEX file record
+//  <length> - checksum value (lower byte)
+// internal RAM write
+ram_write:		.valfield 1 values 0, 1 default 0;
+
+// select address for RAM read/write
+ram_addr:		.valfield 3 values
+				bytecnt,
+				ptr_len,
+				ptr_addr_hi,
+				ptr_addr_lo,
+				ptr_type,
+				-
+				-
+				-
+				default bytecnt;
+
+// counts incoming hex characters
+hexcnt:			.regfield 3 values
+				same,
+				inc,
+				ptr_colon,
+				ptr_len,
+				ptr_type,
+				-,
+				-,
+				zero
+				default same;
+				
+// checksum register
+checksum:		.regfield 2 values
+				same,
+				zero,
+				add_ram,
+				-
+				default same;
+						
+input_reset:	.valfield 1 values 0, 1 default 0;	// setting to 1 is async reset to char_input register
+
+//	error codes are 1 to 6, 0 means no error
+errcode:		.regfield 3 values
+				ok, 
+				err_badchar,			// ERR1
+				err_unexpected,			// ERR2
+				err_badchecksum,		// ERR3
+				err_badrecordtype,		// ERR4
+				err_badrecordlength,	// ERR5
+				same
+				default same;
+
+// comparator "A" source mux
+compa:			.valfield 1 values
+				ram,
+				checksum_lsb
+				default ram;
+				
+// comparator "B" source mux
+compb:			.valfield 2 values
+				zero,
+				one, 
+				bytecnt,
+				bytecnt_dec	// bytecnt - 1 to account for the checksum byte at the end of record
+				default zero;
+				
+// placeholder
+//dummy:			.valfield 1 values * default 0;
+						
+//	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
+goto:		.alias if false then next else;
+noop:		.alias if true then next else next;
+back:	    .alias if true then return else return;
+
+// gosub definitions - this works because "jump" pushes return address to stack if both then/else are same
+emit:		.sub TXDCHAR;
+print_crlf:	.sub;	
+trace:		.sub;	
+printram:	.sub;
+printaddr:	.sub;
+
+// other
+poscnt_zero:.alias poscnt_a = zero;
+lincnt_zero:.alias lincnt_a = zero;
+poscnt_inc:	.alias poscnt_cin = 1;
+lincnt_inc:	.alias lincnt_cin = 1;
+clear:		.alias TXDCHAR <= zero, errcode <= ok, checksum <= zero, poscnt_zero, lincnt_zero, hexcnt <= ptr_colon;
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations
+//	---------------------------------------------------------------------------
+_reset:		clear;  
+
+_reset1:	clear;
+
+_reset2:	clear;
+
+_reset3:	clear;
+
+//	indicate availability and wait for start signal
+//	---------------------------------------------------------------------------
+deadloop:	BUSY = 0, if input_is_zero then repeat else next;
+			trace();
+			poscnt_inc, if true then fork else fork;	// jump to entry point per character code (see .map statements below)
+
+			.map 0b????????;
+badchar:	errcode <= err_badchar, if TRACE_ERROR then printerror else nextchar;		// ERR1
+badcolon:	errcode <= err_unexpected, if TRACE_ERROR then printerror else nextchar;	// ERR2
+badchecksum:errcode <= err_badchecksum, if TRACE_ERROR then printerror else nextchar;	// ERR3	
+badtype:	errcode <= err_badrecordtype, if TRACE_ERROR then printerror else nextchar;	// ERR4
+badlength:	errcode <= err_badrecordlength,if TRACE_ERROR then printerror else nextchar;// ERR5
+badhex:		errcode <= err_unexpected, if TRACE_ERROR then next else nextchar;			// ERR2
+printerror:	emit(char_E);		// ERR
+			emit(char_R);
+			emit(char_R);
+			emit(errcode);
+			emit(char_space);
+			emit(lin_chk3);		// 9999 line number (decimal)
+			emit(lin_chk2);
+			emit(lin_chk1);
+			emit(lin_chk0);
+			emit(char_space);
+			emit(pos_ram1);		// 99 char position in the line (decimal)
+			emit(pos_ram0);
+			emit(char_space);
+			emit(inp1);			// FF hex code of offending char
+			hexcnt <= ptr_colon, emit(inp0);	// force sync with next ':'
+			print_crlf();
+			.map 0;
+nextchar:	errcode <= ok, input_reset = 1, goto deadloop;
+
+emit:		if TXDREADY then next else repeat;	// sync with baudrate clock that drives UART
+			if TXDREADY then next else repeat;
+			if TXDREADY then next else repeat;
+			if TXDSEND then return else return;	// generate a send pulse for UART sender	
+			
+printramR:	emit(char_R);
+
+printram:	emit(char_EQU);
+			emit(pos_ram1);			
+			emit(pos_ram0);
+			
+print_crlf: emit(char_cr);
+			emit(char_lf);
+			back;		
+
+printaddr:	emit(addr3);			
+			emit(addr2);
+			emit(addr1);
+			emit(addr0);
+			back;
+			
+			// with mapping like this lower 4 bits of mapper can be reused as ASCII to HEX decode
+			.org 0x30;
+			.map '0';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+			
+			.org 0x31;
+			.map '1';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x32;
+			.map '2';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x33;
+			.map '3';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x34;
+			.map '4';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x35;
+			.map '5';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x36;
+			.map '6';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x37;
+			.map '7';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x38;
+			.map '8';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x39;
+			.map '9';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3a;
+			.map 'a';
+			.map 'A';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3b;
+			.map 'b';
+			.map 'B';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3c;
+			.map 'c';
+			.map 'C';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3d;
+			.map 'd';
+			.map 'D';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3e;
+			.map 'e';
+			.map 'E';
+			ram_write = 1, ram_addr = bytecnt, goto hexchar;
+
+			.org 0x3f;
+			.map 'f';
+			.map 'F';
+			ram_write = 1, ram_addr = bytecnt;
+hexchar:	if bytecnt_at_colon then badhex;
+			if hexcnt_is_odd then next else dontadd;
+			ram_addr = bytecnt, checksum <= add_ram;
+dontadd:	hexcnt <= inc, goto nextchar;
+
+			.map 0x0A;	// LF (line feed) - try to make it work for Windows (CR,LF) and other (LF only) files
+			if prev_is_crorlf then nextchar else newline;		// ignore subsequent cr/lf
+			
+			.map 0x0D;	// CR (carriage return)
+			if prev_is_crorlf then nextchar else next;			// ignore subsequent cr/lf	
+newline:	compa = checksum_lsb, compb = zero, if compa_equals_compb then next else badchecksum;		// lower byte should be 0x00
+			poscnt_zero, lincnt_inc, if hexcnt_is_odd then badhex else next; 							// should not come between 2 hex characters
+			ram_addr = ptr_type, compa = ram, compb = one, if compa_equals_compb then lastrec;						// RAM(ptr_type) - 0x01
+			ram_addr = ptr_type, compa = ram, compb = zero, if compa_equals_compb then next else badtype; 			// RAM(ptr_type) - 0x00
+			ram_addr = ptr_len, compa = ram, compb = bytecnt_dec, if compa_equals_compb then next else badlength;	// RAM(ptr_length) - bytecnt
+			
+			ram_addr = ptr_addr_hi, address <= shift8ram, hexcnt <= zero;	// A <= A(7..0) < RAM(ptr_addr_hi)
+			ram_addr = ptr_addr_lo, address <= shift8ram, hexcnt <= zero;	// A <= A(7..0) < RAM(ptr_addr_lo)
+
+writeloop:	ram_addr = ptr_len, compa = ram, compb = bytecnt, if compa_equals_compb then nextrec;
+			
+			// ask CPU for memory, then write 1 byte with any number of optional wait cycles
+writemem:	ram_addr = bytecnt, nBUSREQ = 0;
+			ram_addr = bytecnt, nBUSREQ = 0, if nBUSACK then repeat else next;
+			ram_addr = bytecnt, nBUSREQ = 0, nWR = 0;
+			ram_addr = bytecnt, nBUSREQ = 0, nWR = 0, if nWAIT then next else repeat;
+			
+			if TRACE_WRITE then next else nextaddr; 
+			emit(char_A);		// A[address]=data
+			emit(char_open);
+			printaddr();
+			emit(char_close);
+			printram();
+			
+nextaddr:	hexcnt <= inc;
+			hexcnt <= inc, address <= inc, goto writeloop; // bytecnt++, A++
+
+lastrec:	lincnt_zero, if resetout_done then next else next; // clear reset_out	
+			ram_addr = ptr_len, compa = ram, compb = zero, if compa_equals_compb then next else badlength; // length of last record should be 0
+nextrec:	hexcnt <= ptr_colon, goto nextchar; // prepare for next record
+
+dumpram:	emit(char_R);	// Rxx=yy
+			emit(bytecnt1);			
+			emit(bytecnt0);
+			printram();
+			back;
+			
+			.map 0x09;	// treat tabs and spaces same way	
+			.map ' ';
+space:		if prev_is_spaceortab then nextchar else next;	// ignore a run of spaces or tabs
+			if hexcnt_is_odd then badchar else nextchar;	// two hex chars need to stick together!
+
+			.map ':';
+colon:		checksum <= zero, if bytecnt_at_colon then next else badcolon;
+			hexcnt <= inc;
+			hexcnt <= inc, goto nextchar;	// skip two hex positions, now pointing to "length" byte
+					
+trace:		if TRACE_CHAR then next else return;
+			//print_crlf();
+			emit(char_I);		// I=<received char>
+			emit(char_EQU);
+			emit(inp1);			
+			emit(inp0);
+			emit(char_space);
+
+			emit(char_A);		// A=<address>
+			emit(char_EQU);
+			printaddr();
+			emit(char_space);
+
+			emit(char_C);		// C=<checksum>
+			emit(char_EQU);
+			emit(lin_chk3);			
+			emit(lin_chk2);
+			emit(lin_chk1);
+			emit(lin_chk0);
+			emit(char_space);
+			
+//			emit(char_F);		// F=<flags>
+//			emit(char_EQU);
+//			emit(flags);
+//			emit(char_space);
+
+			emit(char_B);		// B=<byte counter>
+			emit(char_EQU);
+			emit(bytecnt1);			
+			emit(bytecnt0);
+			emit(char_space);
+
+			goto printramR;
+
+			

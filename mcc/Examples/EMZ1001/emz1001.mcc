@@ -1,0 +1,98 @@
+//---------------------------------------------------------------------------------------------
+//	Include to adapt mcc as assembler for EMZ1001 (AMI S2000) (c) 2022-... zpekic@hotmail.com
+//  More about mcc:  https://github.com/zpekic/MicroCodeCompiler
+//---------------------------------------------------------------------------------------------
+// http://www.bitsavers.org/components/ami/s2000/
+// Full description: 
+// https://hackaday.io/project/188614-iskra-emz1001a-a-virtual-resurrection/log/214194-recreating-a-simple-emz1001a-assembler
+//---------------------------------------------------------------------------------------------
+// define any slices of the instruction word format
+f76			.valfield 2 values * default 0;
+f54			.valfield 2 values * default 0;
+f32			.valfield 2 values * default 0;
+f10			.valfield 2 values * default 0;
+
+// define instruction formats
+
+// most instructions are "implied" address mode
+opr8		.valfield f76 .. f10 values * default 0;
+// -- or --
+opr6		.valfield f76 .. f32 values * default 0;
+val2		.valfield f10 .. f10 values * default 0;
+// -- or --
+opr4		.valfield f76 .. f54 values * default 0;
+val4		.valfield f32 .. f10 values * default 0;
+// -- or --
+opr2		.valfield f76 .. f76 values * default 0;
+val6		.valfield f54 .. f10 values * default 0;
+						
+// "aliases" are evaluated as simple text replacement of label with everything between .alias and ; 
+// 0-bit operand
+NOP			.alias opr8 = 0x00;
+BRK			.alias opr8 = 0x01;
+RT			.alias opr8 = 0x02;
+RTS			.alias opr8 = 0x03;
+PSH			.alias opr8 = 0x04;
+PSL			.alias opr8 = 0x05;
+AND			.alias opr8 = 0x06;
+SOS			.alias opr8 = 0x07;
+SBE			.alias opr8 = 0x08;
+SZC			.alias opr8 = 0x09;
+STC			.alias opr8 = 0x0A;
+RSC			.alias opr8 = 0x0B;
+LAE			.alias opr8 = 0x0C;
+XAE			.alias opr8 = 0x0D;
+INP			.alias opr8 = 0x0E;
+EUR			.alias opr8 = 0x0F;
+CMA			.alias opr8 = 0x10;
+XABU		.alias opr8 = 0x11;
+LAB			.alias opr8 = 0x12;
+XAB			.alias opr8 = 0x13;
+ADCS		.alias opr8 = 0x14;
+XOR			.alias opr8 = 0x15;
+ADD			.alias opr8 = 0x16;
+SAM			.alias opr8 = 0x17;
+DISB		.alias opr8 = 0x18;
+MVS			.alias opr8 = 0x19;
+OUT			.alias opr8 = 0x1A;
+DISN		.alias opr8 = 0x1B;
+
+// 2-bit operand, not inverted (0x1C .. 0x27)
+SZM			.alias opr6 = 0b000111, val2 =;
+STM			.alias opr6 = 0b001000, val2 =;
+RSM			.alias opr6 = 0b001001, val2 =;
+
+// 0-bit operand
+SZK			.alias opr8 = 0x28;
+SZI			.alias opr8 = 0x29;
+RF1			.alias opr8 = 0x2A;
+SF1			.alias opr8 = 0x2B;
+RF2			.alias opr8 = 0x2C;
+SF2			.alias opr8 = 0x2D;
+TF1			.alias opr8 = 0x2E;
+TF2			.alias opr8 = 0x2F;
+
+// 2-bit operand, inverted (0x30 .. 0x3F)
+XCI			.alias opr6 = 0b001100, val2 = 3 & !;
+XCD			.alias opr6 = 0b001101, val2 = 3 & !;
+XC			.alias opr6 = 0b001110, val2 = 3 & !;
+LAM			.alias opr6 = 0b001111, val2 = 3 & !;
+
+// 2-bit operand, not inverted (0x40 .. 0x4F)
+LBZ			.alias opr6 = 0b010000, val2 =;
+LBF			.alias opr6 = 0b010001, val2 =;
+LBE			.alias opr6 = 0b010010, val2 =;
+LBEP		.alias opr6 = 0b010011, val2 =;
+ 
+// 4-bit operand, not inverted (0x50 .. 0x5F)
+ADIS		.alias opr4 = 0b0101, val4 =;
+
+// 4-bit operand, inverted (0x60 .. 0x6F)
+PP			.alias opr4 = 0b0110, val4 = 0xF & !;
+
+// 4-bit operand, not inverted (0x70 .. 0x7F)
+LAI		.alias opr4 = 0b0111, val4 =;
+
+// 6-bit operand, non inverted label (0x80 .. 0xFF) 
+JMS			.alias opr2 = 0b10, val6 = 0b00111111 & @;
+JMP			.alias opr2 = 0b11, val6 = 0b00111111 & @;

@@ -1,0 +1,199 @@
+//----------------------------------------------------------
+//	Mem2Hex Microcode (c) 2021-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//----------------------------------------------------------
+			.code 6, 34, mem2hex_code.mif, mem2hex_code.cgf, mem2hex_code.coe, m2h:mem2hex_code.vhd, mem2hex_code.hex, mem2hex_code.bin, 8;
+			.mapper 8, 6, mem2hex_map.mif, mem2hex_map.cgf, mem2hex_map.coe, m2h:mem2hex_map.vhd, mem2hex_map.hex, mem2hex_map.bin, 1;
+			.controller mem2hex_control_unit.vhd, 4;
+
+// System interface signals
+nBUSREQ			.valfield 1 values 0, 1 default 1;
+nRD				.valfield 1 values 0, 1 default 1;
+// nWAIT		consumed as condition
+// nBUSACK		consumed as condition
+// A(15..0)		
+// D(7..0)
+
+// Component interface signals
+BUSY			.valfield 1 values 0, 1 default 1;
+// START		consumed as condition
+// PAGE(7..0)	1 bit per 8k block of memory to be dumped out (0xF0 == dump 0x8000 to 0xFFFF)
+
+// Serial UART sender interface signals
+// CHAR			8-bit ASCII or 0x00 if no char is to be sent
+// TXDREADY		sender is ready
+
+seq_cond:		.if 4 values 
+				true, 			// hard-code to 1
+				nWAIT,	 		// Z80 bus - 0 to wait for memory
+				nBUSACK,		// z80 bus - 0 if CPU is 
+				START,			// sense start hexdump signal
+				page_match,		// 1 if memory page switch matches current page
+				mem_addr_is_zero,	// mem_addr(12..0) == 0
+				count_is_zero,	// byte counter on the line is 0
+				TXDREADY,		// high if tracer has processed the trace character
+				TXDSEND,		// will always be "1" but also generates a pulse to TXD
+				page_is_zero,
+				-,
+				-,
+				-,
+				-,
+				-,
+				false			// hard-code to 0
+				default true;
+seq_then:	.then 6 values next, repeat, return, fork, @ default next;				// any label
+seq_else:	.else 6 values next, repeat, return, fork, 0b000000..0b111111, @ default next;	// any value as it can be a trace char
+			
+// memory address = mem_page (3 bits) & mem_addr (13 bits)
+mem_page	.regfield 2 values same, zero, inc, - default same reset zero;	// address(15 downto 13), 8 pages of 8k
+mem_addr	.regfield 2 values same, zero, inc, - default same reset zero;	// address(12 downto 0), 8k per page
+			
+// number of bytes per hex line
+count		.regfield 2 values same, load, dec, zero default same;
+
+// checksum
+checksum	.regfield 3 values same, count, add_addr_lsb, add_addr_msb, add_d, complement, -, zero default same;
+
+// byte read from memory
+d			.regfield 2 values same, dbus, zero, one default same;
+			
+// contains ASCII char for UART trasmit
+CHAR		.regfield 4 values 
+				same,
+				char_colon,
+				char_space,
+				char_cr,
+				char_lf,
+				zero,
+				d_hi,
+				d_lo,
+				count_hi,
+				count_lo,
+				addr_msb_hi,
+				addr_msb_lo,
+				addr_lsb_hi,
+				addr_lsb_lo,
+				checksum_hi,
+				checksum_lo
+				default same reset zero;
+				
+//	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
+goto:		.alias if false then next else;
+noop:		.alias if true then next else next;
+back:	    .alias if true then return else return;
+
+// gosub definitions - this works because "jump" pushes return address to stack if both then/else are same
+emit:		.sub CHAR;
+printpage:  .sub;	
+lineend:	.sub;	
+readmem:	.sub;	
+printcount:	.sub;	
+printaddr:	.sub;	
+// leaving the "sub call" in "old style" to illustrate what is actually happening
+printd:		.alias if false then printd else printd;	
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations
+//	---------------------------------------------------------------------------
+_reset:		noop;  
+
+_reset1:	noop;
+
+_reset2:	noop;
+
+_reset3:	noop;
+
+//	indicate availablity and wait for start signal
+//	---------------------------------------------------------------------------
+deadloop:	CHAR <= zero, BUSY = 0, if START then fork else deadloop;
+
+			.map 0b????????;
+			// "instruction register" is just an 8-bit input port, each bit controls 8k memory block
+			// for example: 10000001 (0x81) will dump 0000-3FFF first and then C000-FFFF next
+			// fork lands here when at least one page bit is on
+			// this is the most generic mask so it should be defined first
+			mem_page <= zero;
+pageloop:	printpage();
+			mem_page <= inc;
+			if page_is_zero then next else pageloop; // page register is 3 bits, so when it wraps to 0 all 8 pages are done
+
+			// fork lands here is all page bits are off
+			// comes after more generic masks to override their target location
+			.map 0b00000000;
+			// last line is hard coded : 00 0000 01 FF<cr><lf>
+			// :
+			mem_page <= zero, mem_addr <= zero, emit(char_colon);
+			emit(char_space);
+			// 00
+			count <= zero, printcount();
+			// 0000
+			printaddr();
+			// 01
+			d <= one, printd;
+			// FF (because checksum should add up to it), then <cr><lf>
+			lineend();
+			
+			// done with this dump, get ready for next
+			goto deadloop;
+
+printpage:  mem_addr <= zero, if page_match then next else return; // 3-bit page register is mux select for input port bits
+
+page_line:	noop;	
+			// :
+			emit(char_colon);
+			//
+			emit(char_space);
+			// 10 or 20 (record length)
+			count <= load, printcount(); // will be 16 or 32 based on input pin
+			// aaaa
+			printaddr();
+			// 00 (type)
+			d <= zero, printd;
+			//
+
+page_byte:	readmem();	// D <= M(page:address)
+			printd;
+			mem_addr <= inc, count <= dec;
+			if count_is_zero then next else page_byte;
+			
+			// done with all the data bytes on this line, output end of line
+			lineend();
+			
+			// mem_addr is 13-bit reg so when it wraps to 0 we are done with 8k page
+			if mem_addr_is_zero then return else page_line;	
+			
+			// all lines end with checksum byte and cr, lf
+lineend:	checksum <= complement;	// checksum <= (!checksum) + 1 (base 2 complement)
+			emit(checksum_hi);		// bits 7:4 converted to ASCII
+			emit(checksum_lo);		// bits 3:0 converted to ASCII
+			emit(char_cr);
+			emit(char_lf);
+			back;
+						
+printcount:	emit(count_hi);
+			emit(count_lo);
+			checksum <= count, goto printspace;	// count is first byte for checksum, so simply assign
+						
+printaddr:	emit(addr_msb_hi);
+			checksum <= add_addr_msb, emit(addr_msb_lo);
+			emit(addr_lsb_hi);
+			checksum <= add_addr_lsb, emit(addr_lsb_lo);
+printspace:	emit(char_space);
+			back;
+
+printd:		emit(d_hi);
+			emit(d_lo);
+			checksum <= add_d, goto printspace;
+						
+			// "UART" is supposed to signal TDXREADY = 1 when presented 0x00 or when serial trasmit is done
+emit:		if TXDREADY then next else repeat;	// sync with baudrate clock that drives UART
+			if TXDREADY then next else repeat;
+			if TXDREADY then next else repeat;
+			if TXDSEND then return else return;
+			
+			// ask CPU for memory, then read 1 byte with any number of optional wait cycles
+readmem:	nBUSREQ = 0;
+			nBUSREQ = 0, if nBUSACK then repeat else next;
+			nBUSREQ = 0, nRD = 0;
+			nBUSREQ = 0, nRD = 0, d <= dbus, if nWAIT then return else repeat;
+			

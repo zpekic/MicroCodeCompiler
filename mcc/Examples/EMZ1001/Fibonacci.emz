@@ -1,0 +1,164 @@
+//---------------------------------------------------------------------------------------------
+//	Fibonacci test code for EMZ1001 (c) 2022-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//---------------------------------------------------------------------------------------------
+// Test code to load into internal 1k ROM of Iskra EMZ1001 (AMI S2000) 4-bit microcontroller
+// http://www.bitsavers.org/components/ami/s2000/
+// Full description: 
+// https://hackaday.io/project/188614-iskra-emz1001a-a-virtual-resurrection/log/214196-test-code-fibonacci-sequence-generator
+//---------------------------------------------------------------------------------------------
+			.code 10, 8, fibonacci_code.mif, fibonacci_code.cgf, fibonacci_code.coe, fib:fibonacci_code.vhd, fibonacci_code.hex, fibonacci_code.bin, 1;
+			.symbol 10, 256, fibonacci_sym.mif, fibonacci_sym.cgf, fibonacci_sym.coe, fib:fibonacci_sym.vhd, fibonacci_sym.hex, fibonacci_sym.bin, 32;
+
+#include "emz1001.mcc";
+
+CR:			.alias 0xD;
+LF:			.alias 0xA;
+OUT_READY:	.alias 1;			// mask for I inputs
+
+//	---------------------------------------------------------------------------
+			.org 0;
+//	Execution starts at bank 0, page 0, location 0
+//	---------------------------------------------------------------------------
+			NOP;
+			
+			LAI 0b1000;		// bit3 = 50Hz, bit0 = invert D lines on output
+			EUR;			// set prescaler and inverter
+			
+DEADLOOP: 	LBZ 0;			// select RAM column 0, row 0
+			JMS  CLEAR;		// clear RAM column 0
+			
+			LBZ 1;			// select RAM column 1, row 0
+			JMS  CLEAR; 	// clear RAM column 1
+			
+			LBZ 1;			// select digit 0 in RAM column 1
+			STM 0;			// RAM[1,0] = 1
+
+			LBF 0b10;		// select current Fibonacci number column (2), BL = 15
+			PSH;			// set all A lines high
+			MVS;			// all anodes high
+			XCD 0b00;		// BL = 14, keep BU
+			PSH;			// drive D lines, do not float them
+			XCD 0b00;		// BL = 13, keep BU
+			PSL;			// set static operation 
+				
+ADDLOOP:	JMS  BCDADD;	// RAM[2,*] = RAM[0,*] + RAM[1,*]
+			SZC;			// check for overflow
+			JMP	DEADLOOP;	// carry from most significant digit means overflow, start from scratch 
+			PP 14;			// prepare for page 14 (instead of usual 15)
+			JMS  DISP_TTY;	// display to "teletype" (ASCII sequence output)
+
+DISPLOOP:	JMS  DISP_LED;	// display to 7-seg LEDs 
+			SOS;			// check if 1 second lapsed
+			JMP DISPLOOP;	// no, continue refreshing LEDs as fast as possible
+			
+			JMS  SHIFT0;	// RAM[0,*] = RAM[1,*]
+			
+			JMS  SHIFT1;	// RAM[1,*] = RAM[2,*]
+			
+			JMP ADDLOOP;	// RAM[0,*] and RAM[1,*] contain last two Fibonacci numbers, continue
+
+//	---------------------------------------------------------------------------
+			.org 0b1110000000;
+//	Page 14 as an "overflow" from busy subroutine page 15
+//	---------------------------------------------------------------------------
+DISP_TTY:	LAI 12;			// start displaying at digit 12 
+			XAE;			// 
+			LBE	0b10;		// BL = 12, BU = 2
+TTYLOOP:	LAI 3;			// ASCII digits 0..9 are hex 0x30 to 0x39
+			XC 0;			// keep BU, M.A is now 3.x
+			OUT;			// D pins <= 3X, strobe EXT low
+			XAE;			// save to E reg
+WAIT_DIGIT:	LAI OUT_READY;	
+			SZI;
+			JMP CONT;
+			JMP WAIT_DIGIT;
+CONT:		XAE;			// restore
+			XCD	0b00;		// next, do not change column
+			JMP TTYLOOP;
+CRLF:		RSM 3;			// clear M[BU, BL]
+			RSM 2;
+			RSM 1;
+			RSM 0;
+			LAI CR;			// High nibble from M, low nibble from A give ASCII code
+			OUT;
+WAIT_CR:	LAI OUT_READY;
+			SZI;
+			JMP OUT_LF;
+			JMP WAIT_CR;
+OUT_LF:		LAI LF;			// Line feed ASCII code
+			OUT;
+WAIT_LF:	LAI OUT_READY;
+			SZI;
+			RT;
+			JMP WAIT_LF;
+
+//	---------------------------------------------------------------------------
+			.org 0b1111000000;
+//	Page 15 in the bank is the default place for subroutines
+//	---------------------------------------------------------------------------
+CLEAR:		LAI 0;			// A = 0, BU set by caller
+			XCI 0;			// Exchange with M[BU, BL], BU = BU, BL++
+			JMP CLEAR;		// repeat until all covered (BU = 0)
+			RT;				// back
+			
+SHIFT0:		LBZ 0b01;		// row (BL) = 0, col (BU) = 1
+SHIFT0LOOP:	LAM 0b01;		// A = M[1, BL], BU = 0 (LSB flipped)
+			XCI 0b01;		// exchange with M[0, BL], BU = 1 (LSB flipped back), BL++
+			JMP SHIFT0LOOP;	// repeat until all moved from column 1 to 0
+			RT;				
+			
+SHIFT1:		LBZ 0b10;		// start with column 2
+SHIFT1LOOP:	LAM 0b11;		// switch to column 1 (both bits flipped!)
+			XCI 0b11;		// switch back to column 2		
+			JMP SHIFT1LOOP;
+			RT;
+
+DISP_LED:	LAI 12;			// start displaying at digit 12 
+			XAE;			// 
+			LBE	0b10;		// BL = 12, BU = 2
+			RSC;			// no decimal point displayed
+LEDLOOP:	LAM 0b00;		// A <= M[BU, BL]
+			DISN;			// segment pattern to D outputs (inverted)
+			PSL;			// prepare digit low (on)
+			MVS;			// update A pins (A[BL] <= '0')
+			NOP;			// delay to keep it lit for a bit
+			NOP;
+			NOP;
+			NOP;
+			NOP;
+			NOP;
+			PSH;			// prepare digit high (off)
+			MVS;			// update A pins (A[BL] <= '1')
+			XCD	0b00;		// next, do not change column
+			JMP LEDLOOP;	
+			RT;
+
+BCDADD:		LBZ 0;			// BL = 0, BU = 0
+			RSC;			// clear carry
+ALOOP:		LAM 0b01;		// A = M[0, BL], BU = 1
+			ADCS;			// C,A = A + M[1, BU] + C
+			JMS V16_TO_18;	// carry set
+			JMS V0_TO_15;	// carry not set
+			XAE;			// save A in E
+			LAI 2;			// A = 2
+			XABU;			// BU = 2
+			XAE;			// restore A
+			XCI 0b10;		// M[2, BL] = A, BU = 0
+			JMP ALOOP;		// repeat until all 16 digits
+			RT;				// done
+
+V0_TO_15:	XAE;
+			LAE;			// E = A
+			ADIS 6;			// Classic DAA adjust
+			JMP BCDCARRY;	// carry set, adjustment was needed, A is correct BCD
+			XAE;			// carry not set, adjustment was not needed, restore A
+			RT;
+BCDCARRY:   STC;
+			RT;
+			
+V16_TO_18:	ADIS 6;		// 0x12 + 6 + 1 becomes 0x18 etc., carry remains set
+			NOP;
+			STC;		// decimal carry forward
+			RTS;		// skip next
+						

@@ -1,0 +1,739 @@
+//----------------------------------------------------------
+//	CDP1802/05/06 Microcode (c) 2020-... zpekic@hotmail.com
+//  Compile with https://github.com/zpekic/MicroCodeCompiler
+//----------------------------------------------------------
+			.code 8, 64, cdp180x_code.mif, cdp180x_code.cgf, cdp180x_code.coe, cpu:cdp180x_code.vhd, cdp180x_code.hex, cdp180x_code.bin, 8;
+			.mapper 9, 8, cdp180x_map.mif, cdp180x_map.cgf, cdp180x_map.coe, cpu:cdp180x_map.vhd, cdp180x_map.hex, cdp180x_map.bin, 1;
+			.controller cpu_control_unit.vhd, 8;
+
+
+bus_state	.valfield 4 values	// SC1	SC0	RD	WR	OE	NE
+				exec_nop,		//	0	1	0	0	0	0	
+				exec_memread,	//	0	1	1	0	0	0
+				exec_memwrite,	//	0	1	0	1	1	0
+				exec_ioread,	//	0	1	0	1	0	1	INP
+				exec_iowrite,	//	0	1	1	0	0	1	OUT
+				dma_memread,	//	1	0	1	0	0	0	DMAOUT
+				dma_memwrite,	//	1	0	0	1	0	0	DMAIN
+				int_nop,		//	1	1	0	0	0	0
+				fetch_memread,	//	0	0	1	0	0	0
+				-,
+				-,
+				-,
+				-,
+				-,
+				-,
+				-
+				default exec_nop;
+
+seq_cond:		.if 4 values 
+				true, 			// hard-code to 1
+				mode_1805, 		// external signal enabling 1805/1806 instructions
+				sync,			// to sync with regular machine cycle when exiting tracing routine
+				cond_3X,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
+				cond_4,			// not used
+				cond_5,			// not used
+				continue,		// not (DMA_IN or DMA_OUT or INT)
+				continue_sw,	// same as above, but also signal to use switch mux in else clause
+				cond_8,			// not used
+				externalInt,	// for BXI (force false in 1802 mode)
+				counterInt,		// for BCI (force false in 1802 mode)
+				alu16_zero,		// 16-bit ALU output (used in DBNZ only)
+				cond_CX,		// driven by 8 input mux connected to ir(2 downto 0), and ir(3) is xor
+				traceEnabled,	// high to trace each instruction
+				traceReady,		// high if tracer has processed the trace character
+				false			// hard-code to 0
+				default true;
+seq_then:	.then 8 values next, repeat, return, fork, @ default next;				// any label
+seq_else:	.else 8 values next, repeat, return, fork, 0x00..0xFF, @ default next;	// any value as it can be a trace char
+			
+// registers documented to be present in the original 180X
+reg_d:		.regfield 3 values same, alu_y, shift_dn_df, shift_dn_0 default same;	// 8 bit accumulator
+reg_df:		.regfield 2 values same, d_msb, d_lsb, alu_cout default same;			// 1 bit data overflow (== carry) bit
+reg_t:		.regfield 2 values same, alu_y, xp, in default same;		// 8 bit temporary register
+reg_b:		.regfield 2 values same, alu_y, t, df_d_dn default same;	// 8 bit aux data register
+reg_x:		.regfield 2 values same, n, alu_yhi, p default same;		// 4 bit index register pointer (hi nibble if together with P)
+reg_p:		.regfield 2 values same, n,	alu_ylo, default same;			// 4 bit program counter pointer (lo nibble if together with X)
+reg_in:		.regfield 1 values same, alu_y default same;				// 8 bit instruction register
+reg_q:		.regfield 2 values same, zero, one default same;			// 1 bit output flip-flop
+reg_mie:	.regfield 2 values same, enable, disable default same;		// 1 bit master interrupt enable
+
+// registers specific to this design
+reg_trace:	.regfield 2 values same, 				// reg_trace <= reg_trace
+								ss_enable_zero, 	// reg_trace <= 0b0_00000000 b8 enables single stepping
+								ss_disable_zero, 	// reg_trace <= 0b1_00000000 b8 disables single stepping
+								ss_disable_char 	// reg_trace <= 0b1_<else_value> capture trace char and disable single stepping
+								default same;
+								
+reg_extend:	.regfield 2 values same, zero, one default same;			// 1 bit instruction register extension
+
+// 16 * 16 register file
+sel_reg:	.valfield 3	values zero, one, two, x, n, p default zero;		// select source of R0-R15 address
+reg_r		.regfield 3 values same, zero, r_plus_one, r_minus_one, yhi_rlo, rhi_ylo, b_t, -  default same;
+
+// 8-bit ALU for arithmetic and logical operations
+// the binary / decimal mode comes directly from instruction bit 8 (reg_extend) as 68XX arithmetic instructions are all decimal
+alu_r:		.valfield 2 values t, d, b, reg_hi default t;
+alu_s:		.valfield 2 values bus,	 d, const, reg_lo default bus;	// const comes from "else" value
+// ALU is implemented as a 2-way 9 bit mux:
+// alu_f(2) = 0 ... logical operations are selected, carry out equals carry in
+// alu_f(2) = 1 ... adder which consists of 2 nibble adders with following signals:
+// carry_in .. output from alu_cin mux for lo nibble, carry_out from lo nibble for hi one
+// r, s .. 4 bit inputs
+// alu_f(1) .. inverts r (xor 1111 in binary mode, lookup table 9..0 in bcd mode)
+// alu_f(0) .. inverts s (same as r)
+// 6 bit adder adds (inverted) r and s
+// 5 bit result is either directly going to carry_out, y(3..0) or looked up in 32 entry lookup table for bcd mode
+alu_f:		.valfield 3 values xor, and, ior, pass_r, r_plus_s, r_plus_ns, nr_plus_s, pass_s default xor;	// f2 selects logic/add, f1 and f0 flip r/s
+alu_cin:	.valfield 1 values f1_or_f0, df default f1_or_f0;	// f1_or_f1 will generate 0 for add, and 1 for subtract
+ 
+ct_oper:	.valfield 4 values disable, enable default disable; // enable counter/timer operations 
+
+// Other bus signals tied to 8-clock cycle sequence (counter increments on falling clock)
+// tpa <= cycle1 when (clk = '1') else (not cycle2); 
+// tpb <= cycle7;
+// ma <= rhi when (cycle = 1 or cycle = 2) else rlo;
+// n <= ir(3 downto 0) when (ir = "01100XXX" or ir = "01101XXX") else "000";
+// nrd <= (not direction(2)) when (cycle(2) = '1') else '1';
+// nwr <= (not direction(1)) when (cycle(1) = '1') else '1';
+// noe <= (not direction(0)) when (cycle(0) = '1') else '1';
+// WAIT signals captured at trailing edge of TPA and TPB
+// EFx, INT, DMA_IN, DMA_OUT are captured into reg_sample at the end of microinstruction cycle
+
+//	useful aliases, these are evaluated as simple text replacement of label with everything between .alias and ; 
+CR:			.alias 0x0D;
+LF:			.alias 0x0A;
+trace:		.alias reg_trace <= ss_disable_char, if true then traceChar else;
+dispatch:	.alias if sync then fork else repeat;
+
+exec_memread	.alias	bus_state = exec_memread;
+exec_memwrite	.alias	bus_state = exec_memwrite;
+exec_ioread		.alias	bus_state = exec_ioread;
+exec_iowrite	.alias	bus_state = exec_iowrite;
+dma_memread		.alias	bus_state = dma_memread;
+dma_memwrite	.alias	bus_state = dma_memwrite;
+int_nop			.alias	bus_state = int_nop;
+fetch_memread	.alias	bus_state = fetch_memread;
+
+y_zero:		.alias alu_f = xor, alu_r = d, alu_s = d; 
+y_d:		.alias alu_f = pass_r, alu_r = d;
+y_b:		.alias alu_f = pass_r, alu_r = b;
+y_lo:		.alias alu_f = pass_s, alu_s = reg_lo;
+y_hi:		.alias alu_f = pass_r, alu_r = reg_hi;
+y_t:		.alias alu_f = pass_r, alu_r = t;
+y_bus:		.alias alu_f = pass_s, alu_s = bus; 
+y_const:	.alias alu_f = pass_s, alu_s = const;
+y_d_plus_d	.alias alu_f = r_plus_s, alu_r = d, alu_s = d;
+y_d_plus_b	.alias alu_f = r_plus_s, alu_r = b, alu_s = d;
+y_d_minus_b	.alias alu_f = nr_plus_s, alu_r = b, alu_s = d;
+y_b_minus_d	.alias alu_f = r_plus_ns, alu_r = b, alu_s = d;
+reg_inc:	.alias reg_r <= r_plus_one;	
+reg_dec:	.alias reg_r <= r_minus_one;	
+reg_clr:	.alias reg_r <= zero;	
+goto:		.alias if false then next else;
+gosub:		.alias if false then next else;	// this works because "jump" pushes return address to stack (1 - 4 level deep only!)
+return:		.alias if false then next else return;
+noop:		.alias if true then next else next;
+
+			.org 0;
+//	First 4 microcode locations can't be used branch destinations
+//	---------------------------------------------------------------------------
+_reset:		reg_trace <= ss_enable_zero;  
+
+_reset1:	reg_trace <= ss_enable_zero;
+
+_reset2:	reg_q <= zero,				// Q = 0
+			y_zero, reg_in <= alu_y;	// IN = 0
+			// TODO add 1805/6 initialization
+
+_reset3:	reg_clr, sel_reg = zero,							// R(0) = 0; 
+			reg_mie <= enable,									// enable interrupts
+			reg_t <= xp,										// T = XP
+			y_zero, reg_x <= n, reg_p <= n,						// X, P = 0
+			reg_extend <= zero;									// default to 1802 instructions
+
+//	Read memory into instruction register
+//	---------------------------------------------------------------------------
+fetch:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_inc;
+
+//	Given that instruction register is loaded late, execute 1 more cycle before forking. It is useful to load B <= M(X)
+// ----------------------------------------------------------------------------
+load_b:		exec_memread, sel_reg = x, reg_b <= alu_y, y_bus,
+			if traceEnabled then traceState else fork;	
+
+//	Respond to DMA or INT requests (using simple switch mechanism)
+//	These requests are honored at the end of each instruction execution
+//	--------------------------------------------------------------------------
+			.org 0b0001_0000;
+dma_or_int: if continue_sw then fetch else dma_or_int;	// else mux is else(7 downto 3) & dma_in & dma_out & int & '1' 
+
+			.org 0b0001_0001;	// no special cycle needed, start a new fetch
+fetch1:		fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_inc,
+			goto load_b;
+
+			.org 0b0001_0011;	// INT
+int_ack:	int_nop, 
+			y_const, reg_t <= xp, reg_x <= alu_yhi, reg_p <= alu_ylo, // T <= XP, X <= 2, P <= 1
+			reg_mie <= disable, 
+			if true then fetch else 0x21;
+
+			.org 0b0001_0101;	// DMA_OUT
+dma_out:	dma_memread, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+			.org 0b0001_0111;	// DMA_OUT, INT ignored
+			dma_memread, sel_reg = zero, reg_inc,	//	DEVICE <= M(R(0)), R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+			.org 0b0001_1001;	// DMA_IN
+dma_in:		dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+			.org 0b0001_1011;	// DMA_IN, INT ignored
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+			.org 0b0001_1101;	// DMA_IN, DMA_OUT ignored
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+			.org 0b0001_1111;	// DMA_IN, DMA_OUT and INT both ignored
+			dma_memwrite, sel_reg = zero, reg_inc, 	//	M(R(0)) <= DEVICE, R(0) <= R(0) + 1
+			if continue then fetch else dma_or_int;
+
+//	Output internal state in following format:
+//	D=?? B=?? FL=?? XP=?? IN=?? R0=???? R1=???? R2=???? RX=???? RP=???? RN=????<cr><lf>
+//	trace mux selection is:
+//	0XXXXXXX ... 7 bit ASCII character in XXXXXXX
+//	1XXXRRR0 ... internal register, low nibble
+//	1XXXRRR1 ... internal register, high nibble
+//	-----------------------------------------------------------------------------
+traceState:	trace 'D';
+			trace '=';
+			trace 0b1000_0111;
+			trace 0b1000_0110;
+			trace ' ';
+
+			trace 'B';
+			trace '=';
+			trace 0b1000_0101;
+			trace 0b1000_0100;
+			trace ' ';
+
+			trace 'F';
+			trace 'L';
+			trace '=';
+			trace 0b1000_0011;
+			trace 0b1000_0010;
+			trace ' ';
+			
+			trace 'X';
+			trace 'P';
+			trace '=';
+			trace 0b1000_1111;
+			trace 0b1000_1110;
+			trace ' ';
+
+			trace 'I';
+			trace 'N';
+			trace '=';
+			trace 0b1000_1001;
+			trace 0b1000_1000;
+
+			gosub traceSpR;
+			gosub traceReg0;
+			
+			gosub traceSpR;
+			gosub traceReg1;
+			
+			gosub traceSpR;
+			gosub traceReg2;
+			
+			gosub traceSpR;
+			gosub traceRegX;
+			
+			gosub traceSpR;
+			gosub traceRegP;
+
+			gosub traceSpR;
+			gosub traceRegN;
+			
+			trace CR;
+			trace LF;
+			
+			reg_trace <= ss_enable_zero, 
+			dispatch;	// resume with instruction execution
+
+traceReg0:	trace '0';
+			trace '=';
+			sel_reg = zero, trace 0b1000_1101;
+			sel_reg = zero, trace 0b1000_1100;
+			sel_reg = zero, trace 0b1000_1011;
+			sel_reg = zero, trace 0b1000_1010;
+			return;
+
+traceReg1:	trace '1';
+			trace '=';
+			sel_reg = one, trace 0b1000_1101;
+			sel_reg = one, trace 0b1000_1100;
+			sel_reg = one, trace 0b1000_1011;
+			sel_reg = one, trace 0b1000_1010;
+			return;
+
+traceReg2:	trace '2';
+			trace '=';
+			sel_reg = two, trace 0b1000_1101;
+			sel_reg = two, trace 0b1000_1100;
+			sel_reg = two, trace 0b1000_1011;
+			sel_reg = two, trace 0b1000_1010;
+			return;
+
+traceRegX:	trace 'X';
+			trace '=';
+			sel_reg = x, trace 0b1000_1101;
+			sel_reg = x, trace 0b1000_1100;
+			sel_reg = x, trace 0b1000_1011;
+			sel_reg = x, trace 0b1000_1010;
+			return;
+
+traceRegP:	trace 'P';
+			trace '=';
+			sel_reg = p, trace 0b1000_1101;
+			sel_reg = p, trace 0b1000_1100;
+			sel_reg = p, trace 0b1000_1011;
+			sel_reg = p, trace 0b1000_1010;
+			return;
+
+traceRegN:	trace 'N';
+			trace '=';
+			sel_reg = n, trace 0b1000_1101;
+			sel_reg = n, trace 0b1000_1100;
+			sel_reg = n, trace 0b1000_1011;
+			sel_reg = n, trace 0b1000_1010;
+			return;
+
+traceSpR:	trace ' ';
+			trace 'R';
+			return;
+
+traceChar:  if traceReady then next else repeat;		// wait until tracer indicates processed character
+			reg_trace <= ss_disable_zero, return;		// sending NULL to tracer readies it for next character
+			
+			.map 0b1_????_????;							// intialize all extended instruction mappings to XNOP
+XNOP:		reg_extend <= zero, goto NOP;
+
+//--------------------------------------------------------
+//	1802 basic instructions
+//--------------------------------------------------------
+			.map 0b0_0000_????;	// D <= M(R(N))
+LDN:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_0000_0000;	// override for LDN 0
+IDL:		noop;
+			// dead loop until DMA or INT detected
+			if continue then IDL else dma_or_int;
+			//if continue then traceState else dma_or_int;
+
+			.map 0b0_0001_????;	// R(N) <= R(N) + 1
+INC:		sel_reg = n, reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0010_????;	// R(N) <= R(N) - 1
+DEC: 		sel_reg = n, reg_dec,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0011_????;	// 2 byte branch instructions
+SBRANCH:	exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+			if cond_3X then sbranch2 else next;
+			
+			.map 0b0_0011_1000; // 2 byte SKIP - OVERRIDE!
+SKIP:		sel_reg = p, reg_inc,							// R(P) <= R(P) + 1 (no branch)
+			if continue then fetch else dma_or_int;
+			
+sbranch2:	sel_reg = p, reg_r <= rhi_ylo, y_b,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0100_????;								// D <= M(R(N)), R(N) <= R(N) + 1
+LDA:		exec_memread, sel_reg = n, y_bus, reg_d <= alu_y, reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0101_????;								// M(R(N)) <= D;
+STR:		exec_memwrite, sel_reg = n, y_d,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0110_0???;
+OUT:		exec_iowrite, sel_reg = x, reg_inc,				// DEVICE(N) <= M(R(X)), R(X) <= R(X) + 1
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0110_0000;	// override for OUT 0
+IRX: 		sel_reg = x, reg_inc,							// R(X) <= R(X) + 1
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0110_1???;
+INP:		exec_ioread, sel_reg = x, y_bus, reg_d <= alu_y, // D, M(R(X)) <= DEVICE(N)
+			if continue then fetch else dma_or_int;	
+
+			.map 0b0_0110_1000;	// override for INP 0 is the linking opcode for extended instructions			
+EXTEND:		if mode_1805 then next else NOP;
+
+			fetch_memread, sel_reg = p, reg_in <= alu_y, y_bus, reg_extend <= one,
+			reg_inc,
+			goto load_b;
+			
+			.map 0b0_0111_0000;
+RET:		y_b, reg_x <= alu_yhi, reg_p <= alu_ylo, reg_mie <= enable,
+			sel_reg = x, reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0001;
+DIS:		y_b, reg_x <= alu_yhi, reg_p <= alu_ylo, reg_mie <= disable,
+			sel_reg = x, reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0010;
+LDXA:		y_b, reg_d <= alu_y;
+
+			sel_reg = x, reg_inc,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0011;
+STXD:		exec_memwrite, y_d, sel_reg = x;
+
+			sel_reg = x, reg_dec,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0100;	// "bcd mode" will be 0 because reg_extend == 0 therefore binary add will be executed
+			.map 0b1_0111_0100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+ADC:		reg_extend <= zero, reg_df <= alu_cout, reg_d <= alu_y, y_d_plus_b, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0101;
+SDB:		reg_df <= alu_cout, reg_d <= alu_y, y_b_minus_d, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0110;
+SHRC:		reg_d <= shift_dn_df, reg_df <= d_lsb, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_0111;
+			.map 0b1_0111_0111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+SMB:		reg_extend <= zero, reg_df <= alu_cout, reg_d <= alu_y, y_d_minus_b, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1000;
+SAV:		exec_memwrite, sel_reg = x, y_t,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1001;
+MARK:		reg_t <= xp;
+
+			exec_memwrite, reg_x <= p, sel_reg = two, y_t, reg_dec, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1010;
+REQ:		reg_q <= zero, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1011;
+SEQ:		reg_q <= one, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1100;
+			.map 0b1_0111_1100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+ADCI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto ADC;
+
+			.map 0b0_0111_1101;
+SDBI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto SDB;
+
+			.map 0b0_0111_1110;	// DF, D <= D + D + DF
+SHLC:		reg_df <= alu_cout, reg_d <= alu_y, alu_f = r_plus_s, alu_r = d, alu_s = d, alu_cin = df, 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_0111_1111;
+			.map 0b1_0111_1111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+SMBI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto SMB;
+
+			.map 0b0_1000_????;	//  D <= R(N).0
+GLO:		reg_d <= alu_y, y_lo, sel_reg = n,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1001_????;	//  D <= R(N).1
+GHI:		reg_d <= alu_y, y_hi, sel_reg = n,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1010_????;	// R(N).0 <= D
+PLO:		reg_r <= rhi_ylo, y_d, sel_reg = n,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1011_????;	// R(N).1 <= D
+PHI:		reg_r <= yhi_rlo, y_d, sel_reg = n,
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1100_????;	// 3 byte branch instructions
+LBRANCH:	exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,	// B <= M(R(P)), R(P) <= R(P) + 1
+			if cond_CX then next else SKIP;
+			
+			exec_memread, sel_reg = p, reg_r <= rhi_ylo, y_bus;			// R(P).0 <= M(R(P))
+
+			sel_reg = p, reg_r <= yhi_rlo, y_b,							// R(P).1 <= B 
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1100_0101;	// LSNQ - OVERRIDE
+			.map 0b0_1100_0110;	// LSNZ - OVERRIDE
+			.map 0b0_1100_0111;	// LSNF - OVERRIDE
+			.map 0b0_1100_1100; // LSIE - OVERRIDE
+			.map 0b0_1100_1101; // LSQ  - OVERRIDE
+			.map 0b0_1100_1110; // LSZ  - OVERRIDE
+			.map 0b0_1100_1111; // LSDF - OVERRIDE
+LSKIP:		if cond_CX then next else NOP;
+
+			.map 0b0_1100_1000; // LSKP - OVERRIDE
+SKIP2:		sel_reg = p, reg_inc,							// R(P) <= R(P) + 1 (skip one)
+			goto SKIP;										// skip another one
+
+			.map 0b0_1100_0100;	// OVERRIDE for 0xC4 LBRANCH
+NOP:		if continue then fetch else dma_or_int;
+				
+			.map 0b0_1101_????;
+SEP:		reg_p <= n,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1110_????;
+SEX:		reg_x <= n,		
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1111_0000;
+LDX:		reg_d <= alu_y, y_b, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0001;
+OR:			reg_d <= alu_y, alu_f = ior, alu_r = b, alu_s = d,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0010;
+AND:		reg_d <= alu_y, alu_f = and, alu_r = b, alu_s = d,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0011;
+XOR:		reg_d <= alu_y, alu_f = xor, alu_r = b, alu_s = d,
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0100;
+			.map 0b1_1111_0100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+ADD:		reg_extend <= zero, reg_df <= alu_cout, reg_d <= alu_y, y_d_plus_b, alu_cin = f1_or_f0, // cin = 0
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0101;
+SD:			reg_df <= alu_cout, reg_d <= alu_y, y_b_minus_d, alu_cin = f1_or_f0, // cin = 1
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0110;
+SHR:		reg_d <= shift_dn_0, reg_df <= d_lsb, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_0111;
+			.map 0b1_1111_0111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+SM:			reg_extend <= zero, reg_df <= alu_cout, reg_d <= alu_y, y_d_minus_b, alu_cin = f1_or_f0, // cin = 1  
+			if continue then fetch else dma_or_int;
+
+			.map 0b0_1111_1000;
+LDI:		exec_memread, sel_reg = p, reg_d <= alu_y, y_bus, reg_inc, 
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1001;
+ORI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto OR;
+			
+			.map 0b0_1111_1010;
+ANI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto AND;
+			
+			.map 0b0_1111_1011;
+XRI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto XOR;
+			
+			.map 0b0_1111_1100;
+			.map 0b1_1111_1100; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+ADI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto ADD;
+
+			.map 0b0_1111_1101;
+SDI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto SD;
+			
+			.map 0b0_1111_1110;
+SHL:		reg_df <= alu_cout, reg_d <= alu_y, y_d_plus_d, alu_cin = f1_or_f0, // cin = 0
+			if continue then fetch else dma_or_int;
+			
+			.map 0b0_1111_1111;
+			.map 0b1_1111_1111; // "bcd mode" will be 1 because reg_extend == 1 therefore BCD add will be executed
+SMI:		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc,
+			goto SM;
+
+//--------------------------------------------------------
+//	1804/5/06 extended instructions
+//--------------------------------------------------------
+		.map 0b1_0000_0000;
+STPC:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0001;
+DTC:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0010;
+SPM2:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0011;
+SCM2:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0100;
+SPM1:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0101;
+SCM1:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0110;
+LDC:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_0111;
+STM:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1000;
+GEC:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1001;
+ETQ:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1010;
+XIE:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1011;
+XID:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1100;
+CIE:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0000_1101;
+CID:	reg_extend <= zero, sel_reg = n, 	// TODO
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0010_????;
+DBNZ:	reg_extend <= zero, sel_reg = n, reg_dec,
+		if alu16_zero then skip2 else next;	// zero detection is connected to the output of the incrementer/decrementer
+
+		exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;	// B <= M(R(P)), R(P) <= R(P) + 1
+			
+		exec_memread, sel_reg = p, reg_r <= rhi_ylo, y_bus;	// R(P).0 <= M(R(P))
+
+		sel_reg = p, reg_r <= yhi_rlo, y_b,							// R(P).1 <= B 
+		if continue then fetch else dma_or_int;
+
+skip2:	sel_reg = p, reg_inc,
+		goto SKIP;
+
+		.map 0b1_0011_1110;
+BCI:	reg_extend <= zero, exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+		if counterInt then sbranch2 else SKIP;	// TODO: clear CI when branching?
+
+		.map 0b1_0011_1111;
+BXI:	reg_extend <= zero, exec_memread, sel_reg = p, y_bus, reg_b <= alu_y,	// B <= R(P)
+		if externalInt then sbranch2 else SKIP;
+
+		.map 0b1_0110_????;
+RLXA:	reg_extend <= zero, exec_memread, sel_reg = x, reg_b <= alu_y, y_bus, reg_inc; // B <= R(X), R(X) <= R(X) + 1
+
+		exec_memread, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc; // T <= R(X), R(X) <= R(X) + 1
+
+		sel_reg = n, reg_r <= yhi_rlo, y_b, reg_b <= t;					// R(N).1 <= B, B <= T
+
+		sel_reg = n, reg_r <= rhi_ylo, y_b,								// R(N).0 <= B
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_0111_0110;
+DSAV:	reg_extend <= zero, sel_reg = x, reg_dec;
+
+		exec_memwrite, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
+
+		exec_memwrite, sel_reg = x, y_d, reg_dec, reg_b <= df_d_dn;	// M(R(X)) <= D, R(X) <= R(X) - 1, B <= DF & D(7 downto 1)
+
+		exec_memwrite, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1 
+		if continue then fetch else dma_or_int;
+		
+		.map 0b1_1000_????;	// TODO - double check logic, this may be buggy
+SCAL:	reg_extend <= zero, sel_reg = n, reg_t <= alu_y, y_lo;							// T <= R(N).0
+
+		sel_reg = n, reg_b <= alu_y, y_hi;							// B <= R(N).1
+
+		exec_memwrite, sel_reg = x, y_t, reg_dec;					// M(R(X)) <= T, R(X) <= R(X) - 1
+		
+		exec_memwrite, sel_reg = x, y_b, reg_dec;					// M(R(X)) <= B, R(X) <= R(X) - 1
+
+		sel_reg = p, reg_t <= alu_y, y_lo;							// T <= R(P).0
+
+		sel_reg = p, reg_b <= alu_y, y_hi;							// B <= R(P).1
+
+		sel_reg = n, reg_r <= b_t;									// R(N) <= B:T
+
+		exec_memread, sel_reg = n, reg_t <= alu_y, y_bus, reg_inc;	// M(R(N)) <= T, R(N) <= R(N) + 1
+
+		exec_memread, sel_reg = n, reg_b <= alu_y, y_bus, reg_inc;	// M(R(N)) <= B, R(N) <= R(N) + 1
+
+		sel_reg = p, reg_r <= b_t,		// R(P) <= B:T
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_1001_????;
+SRET:	reg_extend <= zero, sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
+
+		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
+
+		sel_reg = x, reg_inc;				// R(X) <= R(X) + 1
+
+		sel_reg = p, reg_r <= b_t;			// R(P) <= B:T
+
+		exec_memread, sel_reg = x, reg_t <= alu_y, y_bus, reg_inc;	// T <= M(R(X)), R(X) <= R(X) + 1
+			
+		exec_memread, sel_reg = x, reg_b <= alu_y, y_bus,			// B <= M(R(X))
+		goto load_n;
+
+		.map 0b1_1010_????;
+RSXD:	reg_extend <= zero, sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
+
+		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
+
+		exec_memwrite, sel_reg = x, y_t, reg_dec;	// M(R(X)) <= T, R(X) <= R(X) - 1
+		
+		exec_memwrite, sel_reg = x, y_b, reg_dec,	// M(R(X)) <= B, R(X) <= R(X) - 1
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_1011_????;
+RNX:	reg_extend <= zero, sel_reg = n, reg_t <= alu_y, y_lo;	// T <= R(N).0
+
+		sel_reg = n, reg_b <= alu_y, y_hi;	// B <= R(N).1
+
+		sel_reg = x, reg_r <= b_t,			// R(X) <= B:T
+		if continue then fetch else dma_or_int;
+
+		.map 0b1_1100_????;
+RLDI:	reg_extend <= zero, exec_memread, sel_reg = p, reg_b <= alu_y, y_bus, reg_inc;
+
+		exec_memread, sel_reg = p, reg_t <= alu_y, y_bus, reg_inc; 
+		
+load_n:	sel_reg = n, reg_r <= b_t,	// R(N) <= B:T
+		if continue then fetch else dma_or_int;
+

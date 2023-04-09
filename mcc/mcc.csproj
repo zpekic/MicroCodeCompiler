@@ -79,28 +79,25 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
-    <None Include="..\Microcode\CDP180X.mcc" />
-    <None Include="..\Microcode\CDP180X.log" />
-    <None Include="..\Microcode\cdp180x_code.cgf" />
-    <None Include="..\Microcode\cdp180x_code.coe" />
-    <None Include="..\Microcode\cdp180x_code.hex" />
-    <None Include="..\Microcode\cdp180x_code.mif" />
-    <None Include="..\Microcode\cdp180x_code.vhd" />
-    <None Include="..\Microcode\cdp180x_map.cgf" />
-    <None Include="..\Microcode\cdp180x_map.coe" />
-    <None Include="..\Microcode\cdp180x_map.hex" />
-    <None Include="..\Microcode\cdp180x_map.mif" />
-    <None Include="..\Microcode\cdp180x_map.vhd" />
-    <None Include="..\Microcode\tty_screen.mcc" />
-    <None Include="..\Microcode\tty_screen.log" />
-    <None Include="..\Microcode\tty_screen_code.cgf" />
-    <None Include="..\Microcode\tty_screen_code.hex" />
-    <None Include="..\Microcode\tty_screen_code.mif" />
-    <None Include="..\Microcode\tty_screen_code.vhd" />
-    <None Include="..\Microcode\tty_screen_map.cgf" />
-    <None Include="..\Microcode\tty_screen_map.hex" />
-    <None Include="..\Microcode\tty_screen_map.mif" />
-    <None Include="..\Microcode\tty_screen_map.vhd" />
+    <None Include="Examples\CDP180X\CDP180X.mcc" />
+    <None Include="Examples\CDP180X\mcc.cmd" />
+    <None Include="Examples\EMZ1001\emz1001.mcc" />
+    <None Include="Examples\EMZ1001\Fibonacci.emz" />
+    <None Include="Examples\EMZ1001\HelloWorld.emz" />
+    <None Include="Examples\EMZ1001\mcc.cmd" />
+    <None Include="Examples\Hex_IO\Hex2Mem\2000px-Flag_of_Scotland.svg.hex" />
+    <None Include="Examples\Hex_IO\Hex2Mem\hex2mem.mcc" />
+    <None Include="Examples\Hex_IO\Hex2Mem\img2tim.cmd" />
+    <None Include="Examples\Hex_IO\Hex2Mem\mcc.cmd" />
+    <None Include="Examples\Hex_IO\Hex2Mem\test.hex" />
+    <None Include="Examples\Hex_IO\Hex2Mem\test_single.hex" />
+    <None Include="Examples\Hex_IO\Hex2Mem\tim011_test.hex" />
+    <None Include="Examples\Hex_IO\Hex2Mem\tim011_test_dumped_57600.hex" />
+    <None Include="Examples\Hex_IO\Hex2Mem\vucko_zoi84.hex" />
+    <None Include="Examples\Hex_IO\Mem2Hex\mcc.cmd" />
+    <None Include="Examples\Hex_IO\Mem2Hex\mem2hex.mcc" />
+    <None Include="Examples\TTY_Screen\mcc.cmd" />
+    <None Include="Examples\TTY_Screen\tty_screen.mcc" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.6.1">
@@ -115,5 +112,16 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup />
+  <ItemGroup>
+    <Content Include="docs\Design.JPG" />
+    <Content Include="Examples\CDP180X\Run at 12M5 Hz.PNG" />
+    <Content Include="Examples\CDP180X\Run at 25MHz.PNG" />
+    <Content Include="Examples\Hex_IO\Hex2Mem\screenshot_hex2mem.PNG" />
+    <Content Include="Examples\Hex_IO\Hex2Mem\vucko_zoi84.png" />
+    <Content Include="Examples\Hex_IO\HEX_IO Test circuit.jpg" />
+    <Content Include="Examples\Hex_IO\Mem2Hex\screenshot_mem2hex.PNG" />
+    <Content Include="Examples\Hex_IO\trace_microcode.PNG" />
+    <Content Include="Examples\TTY_Screen\Tty_screen_schema - page 1.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
