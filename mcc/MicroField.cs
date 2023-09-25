@@ -56,7 +56,24 @@ namespace mcc
 
             public bool Match(string token)
             {
-                return string.Equals(Name, token, StringComparison.InvariantCultureIgnoreCase);
+                // support alternate names foo|bar|etc
+                string[] altNames = Name.Split('|');
+                if (altNames.Length > 1)
+                {
+                    foreach(string altName in altNames)
+                    {
+                        if (string.Equals(altName, token, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
+                else
+                {
+                    return string.Equals(Name, token, StringComparison.InvariantCultureIgnoreCase);
+                }
             }
 
             public string GetVhdLine(MicroField current, bool isIfField)
@@ -83,7 +100,9 @@ namespace mcc
                     }
                     else
                     {
-                        bool allowed = char.IsLetter(Name[0]);
+                        string[] altNames = Name.Split('|');
+                        string mainName = altNames[0];
+                        bool allowed = char.IsLetter(mainName[0]);
 
                         if (From == To)
                         {
@@ -91,28 +110,28 @@ namespace mcc
                             {
                                 if (allowed)
                                 {
-                                    return $"constant {current.Label}_{Name}: \tstd_logic := {toVhd};";
+                                    return $"constant {current.Label}_{mainName}: \tstd_logic := {toVhd};";
                                 }
                                 else
                                 {
-                                    return $"-- Value {fromVhd} not allowed (name '{Name}' is not assignable)";
+                                    return $"-- Value {fromVhd} not allowed (name '{mainName}' is not assignable)";
                                 }
                             }
                             else
                             {
                                 if (isIfField)
                                 {
-                                    return (allowed ? "" : "--") + $"constant {current.Label}_{Name}: \tinteger := {this.To};";
+                                    return (allowed ? "" : "--") + $"constant {current.Label}_{mainName}: \tinteger := {this.To};";
                                 }
                                 else
                                 {
                                     if (allowed)
                                     {
-                                        return $"constant {current.Label}_{Name}: \tstd_logic_vector({current.Hi - current.Lo} downto 0) := {toVhd};";
+                                        return $"constant {current.Label}_{mainName}: \tstd_logic_vector({current.Hi - current.Lo} downto 0) := {toVhd};";
                                     }
                                     else
                                     {
-                                        return $"-- Value {toVhd} not allowed (name '{Name}' is not assignable)";
+                                        return $"-- Value {toVhd} not allowed (name '{mainName}' is not assignable)";
                                     }
                                 }
                             }
@@ -125,7 +144,7 @@ namespace mcc
                             }
                             else
                             {
-                                return $"-- Values {fromVhd} to {toVhd} not allowed (name '{Name}' is not assignable)";
+                                return $"-- Values {fromVhd} to {toVhd} not allowed (name '{mainName}' is not assignable)";
                             }
                         }
                     }

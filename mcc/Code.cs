@@ -78,7 +78,21 @@ namespace mcc
                 }
                 foreach (MicroField.ValueVector vv in field.Values)
                 {
-                    sbFields.AppendLine(vv.GetVhdLine(field, field is FieldIf));
+                    string vhdLine = string.Empty;
+                    string[] altNames = vv.Name.Split('|');
+
+                    for (int i = 0; i < altNames.Length; i++)
+                    {
+                        if (i == 0)
+                        {
+                            vhdLine = vv.GetVhdLine(field, field is FieldIf);
+                            sbFields.AppendLine(vhdLine);
+                        }
+                        else
+                        {
+                            sbFields.AppendLine(vhdLine.Replace(altNames[0], altNames[i]));
+                        }
+                    }
                 }
 
                 // attempt to create VHDL code for lazy copy/pasting

@@ -684,13 +684,27 @@ namespace mcc
         {
             Assert((length > 0) && (length <= 32), "Field length must be between 0 and 32");
 
-            string binary = Convert.ToString(value, 2);
-            if (binary.Length == length)
+            string binary32 = Convert.ToString(value, 2);
+            string binary = binary32;
+            if (binary32.Length > length)
             {
+                // truncate
+                binary = binary32.Substring(32 - length);
+                Assert(binary.Length == length, "Bad value length!");
+                logger.WriteLine($"Warning: value {binary32} truncated to value {binary} in line {LineNumber}.");
+
                 return binary;
             }
-            Assert(binary.Length <= length, string.Format("Field length of {0} can't fit value {1}", length.ToString(), binary));
-            return binary.PadLeft(length, '0');
+            if (binary32.Length < length)
+            {
+                // extend
+                binary = binary32.PadLeft(length, '0');
+                //logger.WriteLine($"Warning: value {binary32} extended to value {binary} in line {LineNumber}.");
+
+                return binary;
+            }
+
+            return binary;
         }
 
         protected string GetVhdConstantFromBinaryString(string binary)

@@ -87,7 +87,7 @@ namespace mcc
 
                 if (!string.IsNullOrEmpty(statement))
                 {
-                    if (statement.StartsWith("if", System.StringComparison.InvariantCultureIgnoreCase))
+                    if (statement.StartsWith("if", System.StringComparison.InvariantCultureIgnoreCase) && char.IsWhiteSpace(statement[2]))
                     {
                         Assert(string.IsNullOrEmpty(value_if), "if-then-else already defined");
                         Assert(Split3(statement, "then", out value_if, out value_then), "then clause missing in if statement");
@@ -178,20 +178,64 @@ namespace mcc
             string name;
             string[] nameValuePair = new string[2];
 
-            Assert(Split3(statement, "=", out nameValuePair[0], out nameValuePair[1]), $"Statement '{statement}' not recognized (unresolved alias or comma/semicolon confusion)");
-            if (nameValuePair[0].EndsWith("<"))
+//            Assert(Split3(statement, "=", out nameValuePair[0], out nameValuePair[1]), $"Statement '{statement}' not recognized (unresolved alias or comma/semicolon confusion)");
+            if (Split3(statement, "=", out nameValuePair[0], out nameValuePair[1]))
             {
-                name = nameValuePair[0].TrimEnd(new char[] { '<' }).Trim();
-                Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
-                Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
-                registers.Add(name, nameValuePair[1].Trim());
+                if (nameValuePair[0].EndsWith("<"))
+                {
+                    name = nameValuePair[0].TrimEnd(new char[] { '<' }).Trim();
+                    Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
+                    Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
+                    registers.Add(name, nameValuePair[1].Trim());
+                }
+                else
+                {
+                    name = nameValuePair[0].Trim();
+                    Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
+                    Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
+                    values.Add(name, nameValuePair[1].Trim());
+                }
             }
             else
             {
                 name = nameValuePair[0].Trim();
-                Assert(!registers.Keys.Contains(name), string.Format("'{0} <= ...' already assigned", name));
-                Assert(!values.Keys.Contains(name), string.Format("'{0} = ...' already assigned", name));
-                values.Add(name, nameValuePair[1].Trim());
+                // search in all .regvalue and .fieldvalue fields
+                foreach(ParsedLine p in this.ParsedLines)
+                {
+                    FieldReg fr = p as FieldReg;
+                    if (fr != null)
+                    {
+                        foreach (MicroField.ValueVector vv in fr.Values)
+                        {
+                            if (vv.Match(name))
+                            {
+                                Assert(!registers.Keys.Contains(fr.Label), string.Format("'{0} <= ...' already assigned", name));
+                                Assert(!values.Keys.Contains(fr.Label), string.Format("'{0} = ...' already assigned", name));
+                                registers.Add(fr.Label, name);
+                                // TODO: more validation that this is truly unique match
+                                return;
+                            }
+                        }
+                    }
+
+                    FieldVal fv = p as FieldVal;
+                    if (fv != null)
+                    {
+                        foreach (MicroField.ValueVector vv in fv.Values)
+                        {
+                            if (vv.Match(name))
+                            {
+                                Assert(!registers.Keys.Contains(fv.Label), string.Format("'{0} <= ...' already assigned", name));
+                                Assert(!values.Keys.Contains(fv.Label), string.Format("'{0} = ...' already assigned", name));
+                                values.Add(fv.Label, name);
+                                // TODO: more validation that this is truly unique match
+                                return;
+                            }
+                        }
+                    }
+
+                }
+                Assert(false, $"Symbol {name} not found");
             }
         }
 
@@ -200,6 +244,7 @@ namespace mcc
             StringBuilder uiBuilder = new StringBuilder();
             StringBuilder miBuilder = new StringBuilder();
             String bStr;
+            int iVal, iMask;
             List<FieldData> fdList = new List<FieldData>();
 
             // assemble the microinstruction word by iterating through all microinstruction fields
@@ -258,7 +303,15 @@ namespace mcc
                         values.Remove(mf.Label); // means we used it
                     }
                     // TODO: replace FindValue() with EvaluateExpression()
-                    bStr = GetBinaryString(mf.FindValue(val, labelOrg, LineNumber), Math.Abs(mf.Width));
+                    if (GetValueAndMask(val, out iVal, out iMask, labelOrg))
+                    {
+                        bStr = GetBinaryString(iVal, Math.Abs(mf.Width));
+                    }
+                    else
+                    {
+                        bStr = GetBinaryString(mf.FindValue(val, labelOrg, LineNumber), Math.Abs(mf.Width));
+                    }
+
                     if (mf.Width > 0)
                     {
                         // regular field, just add it

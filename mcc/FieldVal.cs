@@ -61,22 +61,35 @@ namespace mcc
                         }
                         else
                         {
-                            string expression = GuessVhdlExpressionFromName(Label, vv.Name, fieldLabels);
+                            string[] altNames = vv.Name.Split('|');   // filter out alternate names
+                            string expression = GuessVhdlExpressionFromName(Label, altNames[0], fieldLabels);
                             bool isDefault = false;
 
-                            sbCode.Append($"--      {expression} when {Label}_{vv.Name}");
-                            if (vv.Match(this.DefaultValue))
+                            for (int i = 0; i < altNames.Length; i++)
                             {
-                                isDefault = true;
-                                defaultExpression = expression;
-                            }
-                            if (!appendOthers && (count == Values.Count))
-                            {
-                                sbCode.AppendLine(isDefault ? "; -- default value" : ";");
-                            }
-                            else
-                            {
-                                sbCode.AppendLine(isDefault ? ", -- default value" : ",");
+                                // BUGBUG: comma and semicolon on last lines are messed up!
+                                //if (i == 0)
+                                //{
+                                    sbCode.Append($"--      {expression} when {Label}_{altNames[i]}");
+                                //}
+                                //else
+                                //{
+                                //    sbCode.AppendLine($"--      {expression} when {Label}_{altNames[i]}");
+                                //}
+
+                                if (vv.Match(this.DefaultValue))
+                                {
+                                    isDefault = true;
+                                    defaultExpression = expression;
+                                }
+                                if (!appendOthers && (count == Values.Count))
+                                {
+                                    sbCode.AppendLine(isDefault ? "; -- default value" : ";");
+                                }
+                                else
+                                {
+                                    sbCode.AppendLine(isDefault ? ", -- default value" : ",");
+                                }
                             }
                         }
                     }
