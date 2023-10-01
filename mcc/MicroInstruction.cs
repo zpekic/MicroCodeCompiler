@@ -372,11 +372,11 @@ namespace mcc
 
                 if (fatal)
                 {
-                    Assert(false, warningWithList);
+                    Assert(false, $"{warningWithList} in '{Content}', line {LineNumber}");
                 }
                 else
                 {
-                    logger.WriteLine(warningWithList);
+                    logger.WriteLine($"{warningWithList} in '{Content}', line {LineNumber}");
                 }
             }
         }

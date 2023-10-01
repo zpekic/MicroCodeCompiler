@@ -34,7 +34,7 @@ namespace mcc
                     //if (args[0].EndsWith(".mcc", StringComparison.InvariantCultureIgnoreCase))
                     {
                         // compile mode
-                        Pass0(args[sourceFileIndex], assemblyMode);
+                        Pass0(args[sourceFileIndex], assemblyMode, -1);
                         Pass1(args[sourceFileIndex], assemblyMode);
                     }
                     else
@@ -233,12 +233,12 @@ namespace mcc
             // Generate all the destination files
             int outputFileCount = Generate((MemBlock)mapper, allowUninitialized, "Generating: ", null, true);
 
-            logger.WriteLine($"Success: Conversion - {outputFileCount.ToString()} file(s) generated.");
+            logger.WriteLine($"Success: Conversion on {sourceFileName} - {outputFileCount.ToString()} file(s) generated.");
         }
 
-        private static void Pass0(string sourceFileName, bool assemblyMode)
+        private static int Pass0(string sourceFileName, bool assemblyMode, int invokerOrgValue)
         {
-            int orgValue = -1;
+            int orgValue = invokerOrgValue;
             ParsedLine continuationLine = null;
             string rawLine, comment;
             bool inImplementationSection = false;
@@ -294,7 +294,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".org", out label, out content))
                     {
                         Assert(string.IsNullOrEmpty(label), "Label not allowed on .org");
-                        Org org = new Org(lineCounter[sourceFileName], -1, label, content, logger);
+                        Org org = new Org(lineCounter[sourceFileName], orgValue, label, content, logger);
                         if (((ParsedLine) org).Pass1() == null)
                         {
                             orgValue = org.GetUpdatedOrgValue(orgValue);
@@ -470,7 +470,7 @@ namespace mcc
                         Assert(continuationLine == null, "Previous line not closed with ';'");
                         Assert(!string.IsNullOrEmpty(content), "File [path\\]name missing");
 
-                        Pass0(content.TrimEnd(';').Trim('"'), assemblyMode);
+                        orgValue = Pass0(content.TrimEnd(';').Trim('"'), assemblyMode, orgValue);
 
                         continue;
                     }
@@ -533,7 +533,9 @@ namespace mcc
                 CheckField(checkFe, ".else field not defined, code might not compile or work");
             }
 
-            logger.WriteLine($"Success: pass 1 {lineCounter[sourceFileName]} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed.");
+            logger.WriteLine($"Success: pass 0 on {sourceFileName} - {lineCounter[sourceFileName]} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed, code address range 0x{invokerOrgValue:X4} - 0x{orgValue:X4}.");
+
+            return orgValue;
         }
         
         private static void Pass1(string sourceFileName, bool assemblyMode)
@@ -652,7 +654,7 @@ namespace mcc
                 outputFileCount += controller.GenerateFiles("Generating controller");
             }
 
-            logger.WriteLine($"Success: pass 2 - {outputFileCount.ToString()} file(s) generated.");
+            logger.WriteLine($"Success: pass 1 on {sourceFileName} - {outputFileCount.ToString()} file(s) generated.");
         }
 
         static int Generate(MemBlock mem, bool allowUninitialized, string trace, List<MicroField> fields, bool isConversion)
