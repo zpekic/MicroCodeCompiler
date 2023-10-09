@@ -442,7 +442,7 @@ namespace mcc
                     if (ParsedLine.Split3(rawLine, ".alias", out label, out content))
                     {
                         Assert(continuationLine == null, "Previous line not closed with ';'");
-                        Assert(!inImplementationSection, ".valfield outside definition section.");
+                        Assert(!inImplementationSection, ".alias outside definition section.");
 
                         Alias alias = new Alias(lineCounter[sourceFileName], orgValue, label, content, logger);
                         continuationLine = ((ParsedLine) alias).Pass1();

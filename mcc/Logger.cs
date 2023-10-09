@@ -13,13 +13,14 @@ namespace mcc
 
         public Logger(string[] args)
         {
-            if (args.Length > 0)
+            foreach (string arg in args)
             {
-                string sourceFileName = args[0];
+                string sourceFileName = arg;
                 if (File.Exists(sourceFileName))
                 {
                     string ext = sourceFileName.Substring(sourceFileName.LastIndexOf("."));
                     logFile = new StreamWriter(sourceFileName.Replace(ext, ".log"), false, Encoding.ASCII);
+                    break;
                 }
             }
         }

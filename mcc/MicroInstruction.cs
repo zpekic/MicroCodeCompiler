@@ -385,10 +385,10 @@ namespace mcc
         {
             List<string> resolved = new List<string>();
 
-            if (aliasLines == null)
-            {
+//            if (aliasLines == null)
+//            {
                 aliasLines = ParsedLines.FindAll(pl => pl.GetType().ToString() == "mcc.Alias").ToArray();
-            }
+//            }
             // aliases are supposed to be compouding, so expand them in opposite order
             for (int pl = aliasLines.Length - 1; pl >= 0; pl--)
             {
