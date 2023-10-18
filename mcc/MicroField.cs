@@ -103,6 +103,11 @@ namespace mcc
                         string[] altNames = Name.Split('|');
                         string mainName = altNames[0];
                         bool allowed = char.IsLetter(mainName[0]);
+                        // replace chars that would break VHDL syntax
+                        mainName = mainName.Replace("[", "_");
+                        mainName = mainName.Replace("]", "");
+                        mainName = mainName.Replace("(", "__");
+                        mainName = mainName.Replace(")", "");
 
                         if (From == To)
                         {
