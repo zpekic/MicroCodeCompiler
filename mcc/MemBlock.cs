@@ -352,7 +352,12 @@ namespace mcc
                     if (!string.IsNullOrEmpty(memory[address].Comment))
                     {
                         sb.Append("-- ");
-                        sb.AppendLine(memory[address].Comment);
+                        // TODO: fix terrible HACK!
+                        DataVector dv = memory[address];
+                        string data = GetHexFromBinary(dv.Data.Replace("_", string.Empty), dataWidth);
+                        string commentWithData = dv.Comment.Replace(".", $" {data}.");
+                        //sb.AppendLine(memory[address].Comment);
+                        sb.AppendLine(commentWithData);
                         if (!string.IsNullOrEmpty(memory[address].ExtraComment))
                         {
                             sb.Append("-- ");
