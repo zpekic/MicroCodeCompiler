@@ -490,6 +490,7 @@ namespace mcc
                             if (!label.StartsWith("_"))
                             {
                                 // all labels not starting with _ are valid microcode jump/call destinations
+                                Assert(!labelOrg.ContainsKey(label), $"Label '{label}' has already been defined");
                                 labelOrg.Add(label, orgValue);
                             }
                         }
