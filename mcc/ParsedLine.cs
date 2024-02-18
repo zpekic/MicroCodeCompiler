@@ -96,7 +96,7 @@ namespace mcc
         {
             if (this.Content.EndsWith(";"))
             {
-                throw new MccException(this.LineNumber, "Trying to add content to closed line");
+                throw new MccException(this.LineNumber, null, "Trying to add content to closed line");
             }
             else
             {
@@ -842,7 +842,7 @@ namespace mcc
         {
             if (!condition)
             {
-                throw new MccException(this.LineNumber, exceptionMessage);
+                throw new MccException(this.LineNumber, Program.currentFileName, exceptionMessage);
             }
         }
 
@@ -851,7 +851,7 @@ namespace mcc
             string trimmedString = rawString.Trim();
             if (string.IsNullOrEmpty(trimmedString))
             {
-                throw new MccException(lineNumber, exceptionMessage);
+                throw new MccException(lineNumber, Program.currentFileName, exceptionMessage);
             }
 
             return trimmedString;

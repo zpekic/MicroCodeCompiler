@@ -11,7 +11,7 @@ namespace mcc
     class Program
     {
         static Dictionary<string, int> lineCounter = new Dictionary<string, int>();
-        static string currentFileName;
+        public static string currentFileName;
         static List<ParsedLine> parsedLines = new List<ParsedLine>();
         static Dictionary<string, int> labelLine = new Dictionary<string, int>();
         static Dictionary<string, int> labelOrg = new Dictionary<string, int>();
@@ -19,6 +19,7 @@ namespace mcc
         static bool isRisingEdge = true;
         static bool assemblyMode = false;
         static int sourceFileIndex = -1;
+        static string currentSourceFileName = string.Empty;
 
         static int Main(string[] args)
         {
@@ -690,7 +691,7 @@ namespace mcc
         {
             if (!condition)
             {
-                throw new MccException(lineCounter[currentFileName], exceptionMessage);
+                throw new MccException(lineCounter[currentFileName], currentFileName, exceptionMessage);
             }
         }
 

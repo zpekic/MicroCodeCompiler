@@ -5,11 +5,13 @@ namespace mcc
     internal class MccException : Exception
     {
         private int line;
+        private string file;
         private string customMessage;
 
-        public MccException(int lineNumber, string message) : base(message)
+        public MccException(int lineNumber, string fileName, string message) : base(message)
         {
             this.line = lineNumber;
+            this.file = fileName;
             this.customMessage = message;
         }
 
@@ -17,7 +19,7 @@ namespace mcc
         {
             get
             {
-                return String.Format("Error in line {0}: {1}.", line.ToString(), customMessage);
+                return $"Error in file '{file}' line {line}: {customMessage}.";
             }
         }
     }

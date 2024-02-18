@@ -365,11 +365,27 @@ namespace mcc
             // find the default value
             foreach (ValueVector vv in this.Values)
             {
-                if (defaultValue.Equals(vv.Name, StringComparison.InvariantCultureIgnoreCase))
+                if (vv.Name.Contains("|"))
                 {
-                    // found a "named" value
-                    this.DefaultValue = vv.From;
-                    return;
+                    string[] altNames = vv.Name.Split('|');
+                    foreach(string altName in altNames)
+                    {
+                        if (defaultValue.Equals(altName.Trim(), StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            // found a "named" value among alternatives
+                            this.DefaultValue = vv.From;
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    if (defaultValue.Equals(vv.Name, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        // found a "named" value
+                        this.DefaultValue = vv.From;
+                        return;
+                    }
                 }
             }
 
