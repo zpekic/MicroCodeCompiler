@@ -20,6 +20,7 @@ namespace mcc
         static bool assemblyMode = false;
         static int sourceFileIndex = -1;
         static string currentSourceFileName = string.Empty;
+        static Dictionary<string, string[]> multiLineAlias = new Dictionary<string, string[]>();
 
         static int Main(string[] args)
         {
@@ -232,7 +233,7 @@ namespace mcc
             }
 
             // Generate all the destination files
-            int outputFileCount = Generate((MemBlock)mapper, allowUninitialized, "Generating: ", null, true);
+            int outputFileCount = Generate(string.Empty, (MemBlock)mapper, allowUninitialized, "Generating: ", null, true);
 
             logger.WriteLine($"Success: Conversion on {sourceFileName} - {outputFileCount.ToString()} file(s) generated.");
         }
@@ -254,6 +255,7 @@ namespace mcc
             Assert(!lineCounter.ContainsKey(sourceFileName), $"Recursive or circular #include {sourceFileName}");
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 1 out of 2.");
+            Program.currentSourceFileName = sourceFileName;
 
             sourceFile = new System.IO.StreamReader(sourceFileName);
             currentFileName = sourceFileName;
@@ -296,14 +298,14 @@ namespace mcc
                     {
                         Assert(string.IsNullOrEmpty(label), "Label not allowed on .org");
                         Org org = new Org(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        if (((ParsedLine) org).Pass1() == null)
+                        if (((ParsedLine)org).Pass1() == null)
                         {
                             orgValue = org.GetUpdatedOrgValue(orgValue);
                             continuationLine = null;
                         }
                         else
                         {
-                            continuationLine = (ParsedLine) org;
+                            continuationLine = (ParsedLine)org;
                         }
 
                         parsedLines.Add(org);
@@ -318,7 +320,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".code outside definition section");
 
                         Code code = new Code(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) code).Pass1();
+                        continuationLine = ((ParsedLine)code).Pass1();
                         parsedLines.Add(code);
 
                         continue;
@@ -330,7 +332,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".code outside definition section");
 
                         Symbol symbol = new Symbol(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) symbol).Pass1();
+                        continuationLine = ((ParsedLine)symbol).Pass1();
                         parsedLines.Add(symbol);
 
                         continue;
@@ -342,7 +344,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Mapper mapper = new Mapper(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) mapper).Pass1();
+                        continuationLine = ((ParsedLine)mapper).Pass1();
                         parsedLines.Add(mapper);
 
                         continue;
@@ -354,7 +356,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".mapper outside definition section");
 
                         Controller controller = new Controller(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) controller).Pass1();
+                        continuationLine = ((ParsedLine)controller).Pass1();
                         isRisingEdge = controller.GetClockEdge();
                         parsedLines.Add(controller);
 
@@ -367,7 +369,7 @@ namespace mcc
                         Assert(inImplementationSection, ".map outside implementation section");
 
                         Map map = new Map(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) map).Pass1();
+                        continuationLine = ((ParsedLine)map).Pass1();
                         parsedLines.Add(map);
 
                         continue;
@@ -381,7 +383,7 @@ namespace mcc
 
                         FieldIf fi = new FieldIf(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFi = fi;
-                        continuationLine = ((ParsedLine) fi).Pass1();
+                        continuationLine = ((ParsedLine)fi).Pass1();
                         parsedLines.Add(fi);
                         AddLabel(label, lineCounter[sourceFileName]);
 
@@ -396,7 +398,7 @@ namespace mcc
 
                         FieldThen ft = new FieldThen(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFt = ft;
-                        continuationLine = ((ParsedLine) ft).Pass1();
+                        continuationLine = ((ParsedLine)ft).Pass1();
                         parsedLines.Add(ft);
 
                         continue;
@@ -410,7 +412,7 @@ namespace mcc
 
                         FieldElse fe = new FieldElse(lineCounter[sourceFileName], orgValue, label, content, logger);
                         checkFe = fe;
-                        continuationLine = ((ParsedLine) fe).Pass1();
+                        continuationLine = ((ParsedLine)fe).Pass1();
                         parsedLines.Add(fe);
 
                         continue;
@@ -422,7 +424,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".regfield outside definition section.");
 
                         FieldReg fr = new FieldReg(lineCounter[sourceFileName], orgValue, label, content, logger, parsedLines);
-                        continuationLine = ((ParsedLine) fr).Pass1();
+                        continuationLine = ((ParsedLine)fr).Pass1();
                         parsedLines.Add(fr);
 
                         continue;
@@ -434,7 +436,7 @@ namespace mcc
                         Assert(!inImplementationSection, ".valfield outside definition section.");
 
                         FieldVal fv = new FieldVal(lineCounter[sourceFileName], orgValue, label, content, logger, parsedLines);
-                        continuationLine = ((ParsedLine) fv).Pass1();
+                        continuationLine = ((ParsedLine)fv).Pass1();
                         parsedLines.Add(fv);
 
                         continue;
@@ -446,8 +448,13 @@ namespace mcc
                         Assert(!inImplementationSection, ".alias outside definition section.");
 
                         Alias alias = new Alias(lineCounter[sourceFileName], orgValue, label, content, logger);
-                        continuationLine = ((ParsedLine) alias).Pass1();
+                        continuationLine = ((ParsedLine)alias).Pass1();
                         parsedLines.Add(alias);
+
+                        if (alias.Lines.Length > 1)
+                        {
+                            multiLineAlias.Add(alias.Label, alias.Lines);
+                        }
 
                         continue;
                     }
@@ -486,7 +493,6 @@ namespace mcc
 
                         if (ParsedLine.Split3(rawLine, ":", out label, out content))
                         {
-                            microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, label, content, parsedLines, logger);
                             inImplementationSection = true;
                             if (!label.StartsWith("_"))
                             {
@@ -494,17 +500,69 @@ namespace mcc
                                 Assert(!labelOrg.ContainsKey(label), $"Label '{label}' has already been defined");
                                 labelOrg.Add(label, orgValue);
                             }
+                            //microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, label, content, parsedLines, logger);
+                            //parsedLines.Add(microInstruction);
+                            //orgValue++;
+                            //continuationLine = ((ParsedLine)microInstruction).Pass1();
                         }
                         else
                         {
-                            microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, string.Empty, rawLine, parsedLines, logger);
                             inImplementationSection = true;
+                            label = string.Empty;
+                            content = rawLine;
                         }
 
-                        parsedLines.Add(microInstruction);
-                        continuationLine = ((ParsedLine) microInstruction).Pass1();
-                        orgValue++;
+                        string mlAliasKey = null;
+                        foreach (string mlAlias in multiLineAlias.Keys)
+                        {
+                            if (rawLine.IndexOf(mlAlias, StringComparison.InvariantCultureIgnoreCase) >= 0)
+                            {
+                                mlAliasKey = mlAlias;
+                                break;
+                            }
+                        }
+                        if (mlAliasKey == null)
+                        {
+                            // no multi-line alias found, will generate single instruction
+                            microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, label, content, parsedLines, logger);
+                            parsedLines.Add(microInstruction);
+                            orgValue++;
+                            continuationLine = ((ParsedLine)microInstruction).Pass1();
+                        }
+                        else
+                        {
+                            // multi-line alias found, will generate as n + 1 instructions, where n is count of \ in alias definition
+                            // TODO: allow continuation in the case of multiline alias
+                            string before, after;
 
+                            ParsedLine.Split3(content, mlAliasKey, out before, out after);
+                            for (int i = 0; i < multiLineAlias[mlAliasKey].Length; i++)
+                            {
+                                string aliasLine = multiLineAlias[mlAliasKey][i].Replace(';', ' ');
+                                if (i == multiLineAlias[mlAliasKey].Length - 1)
+                                {
+                                    // last
+                                    microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, string.Empty, aliasLine + " " + after, parsedLines, logger);
+                                }
+                                else
+                                {
+                                    if (i == 0)
+                                    {
+                                        // first (also gets the label, if any)
+                                        microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, label, before + aliasLine + ";", parsedLines, logger);
+                                    }
+                                    else
+                                    {
+                                        // any in the middle
+                                        microInstruction = new MicroInstruction(lineCounter[sourceFileName], orgValue, string.Empty, aliasLine + ";", parsedLines, logger);
+                                    }
+                                }
+
+                                parsedLines.Add(microInstruction);
+                                orgValue++;
+                                continuationLine = ((ParsedLine)microInstruction).Pass1();
+                            }
+                        }
                     }
                     else
                     {
@@ -524,6 +582,7 @@ namespace mcc
                         continuationLine = null;
                     }
                 }
+
             }
             sourceFile.Close();
 
@@ -556,10 +615,12 @@ namespace mcc
             Symbol symbol = null;
             int symbolDepth = -1;
             int symbolWidth = -1;
+            string baseFileName = sourceFileName.Substring(0, sourceFileName.LastIndexOf("."));
 
             List<MicroField> fields = new List<MicroField>();
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 2 out of 2.");
+            Program.currentSourceFileName = sourceFileName;
 
             foreach (ParsedLine pl in parsedLines)
             {
@@ -641,16 +702,16 @@ namespace mcc
                 }
             }
 
-            int outputFileCount = Generate((MemBlock) code, true, "Generating code: ", fields, false);
+            int outputFileCount = Generate(baseFileName, (MemBlock) code, true, "Generating code: ", fields, false);
             if (mapper == null)
             {
                 Assert(assemblyMode, ".mapper definition is missing!");
             }
             else
             {
-                outputFileCount += Generate((MemBlock)mapper, false, "Generating mapping: ", null, false);
+                outputFileCount += Generate(baseFileName, (MemBlock)mapper, false, "Generating mapping: ", null, false);
             }
-            outputFileCount += Generate((MemBlock)symbol, true, "Generating symbol: ", null, false);
+            outputFileCount += Generate(baseFileName, (MemBlock)symbol, true, "Generating symbol: ", null, false);
             if (controller != null)
             {
                 outputFileCount += controller.GenerateFiles("Generating controller");
@@ -659,7 +720,7 @@ namespace mcc
             logger.WriteLine($"Success: pass 1 on {sourceFileName} - {outputFileCount.ToString()} file(s) generated.");
         }
 
-        static int Generate(MemBlock mem, bool allowUninitialized, string trace, List<MicroField> fields, bool isConversion)
+        static int Generate(string baseFileName, MemBlock mem, bool allowUninitialized, string trace, List<MicroField> fields, bool isConversion)
         {
             logger.Write(trace);
             if (mem == null)
@@ -669,7 +730,7 @@ namespace mcc
             }
 
             logger.WriteLine(string.Empty);
-            return mem.Generate(allowUninitialized, fields, isConversion, isRisingEdge);
+            return mem.Generate(baseFileName, allowUninitialized, fields, isConversion, isRisingEdge);
         }
 
         private static void AddLabel(string label, int line)

@@ -61,8 +61,9 @@ namespace mcc
                 sbBinary.Append(GetBinaryString(b, 8));
                 sbBinary.Append("_");
             }
-            logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
-            memory.Add(address, new DataVector(sbBinary.ToString(), comment, extraComment));
+            string sb = sbBinary.ToString();
+            logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{sb}'");
+            memory.Add(address, new DataVector(sb, comment, extraComment));
         }
 
         public void Write(int address, string data, string comment, string extraComment, bool allowOverwrite, string flavor)
@@ -78,7 +79,7 @@ namespace mcc
             }
             else
             {
-                logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
+                //logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
             }
             memory.Add(address, new DataVector(data, comment, extraComment));
         }
@@ -228,7 +229,7 @@ namespace mcc
             return true;
         }
 
-        public int Generate(bool allowUninitialized, List<MicroField> fields, bool isConversion, bool isRisingEdge)
+        public int Generate(string sourceFileName, bool allowUninitialized, List<MicroField> fields, bool isConversion, bool isRisingEdge)
         {
             int count = 0;
             int capacity = 2 << (this.addressWidth - 1);
@@ -280,11 +281,11 @@ namespace mcc
                         Assert(false, $"Filename '{fileName}' is invalid.");
                         break;
                     case 1:
-                        outputFileInfo = new FileInfo(prefixNamePair[0]);
+                        outputFileInfo = new FileInfo(GetFileName(prefixNamePair[0], sourceFileName));
                         break;
                     case 2:
                         prefix = prefixNamePair[0];
-                        outputFileInfo = new FileInfo(prefixNamePair[1]);
+                        outputFileInfo = new FileInfo(GetFileName(prefixNamePair[1], sourceFileName));
                         break;
                     default:
                         Assert(false, $"Filename '{fileName}' is invalid.");
@@ -327,6 +328,11 @@ namespace mcc
                 }
             }
             return count;
+        }
+
+        protected string GetFileName(string fileNameFormat, string baseFileName)
+        {
+            return fileNameFormat.Replace("*", baseFileName);
         }
 
         protected string GetVhdMemory(int capacity, string defaultMicroinstruction, string otherRanges, bool longHex)
