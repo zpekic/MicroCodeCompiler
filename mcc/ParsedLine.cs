@@ -316,6 +316,11 @@ namespace mcc
                         value = targets[label];
                         return true;
                     }
+                    else
+                    {
+                        //logger.WriteLine($"Label {label} is undefined");
+                        Assert(false, $"Label {label} is undefined");
+                    }
                 }
                 return false;
             }
@@ -325,7 +330,7 @@ namespace mcc
                 string label = input.Substring(1).Trim();
                 if (!string.IsNullOrEmpty(label))
                 {
-                    logger.WriteLine(string.Format("Warning: line {0} - label '{1}' after $ ignored", LineNumber.ToString(), label));
+                    logger.WriteLine($"Warning: line {LineNumber} - label '{label}' after $ ignored");
                 }
                 value = this.OrgValue;
                 return true;
@@ -815,10 +820,10 @@ namespace mcc
             string binaryNibble;
 
             StringBuilder hexBuilder = new StringBuilder();
-            for (int i = 0; i < (dataWidth / 4); i++)
+            for (int i = 0; i < dataWidth; i += 4)
             {
-                binaryNibble = binaryData.Substring(i << 2, 4);
-                Assert(Bin2Hex.ContainsKey(binaryNibble), string.Format("Invalid nibble '{0}' detected", binaryNibble));
+                binaryNibble = binaryData.Substring(i, 4);
+                //Assert(Bin2Hex.ContainsKey(binaryNibble), string.Format("Invalid nibble '{0}' detected", binaryNibble));
                 hexBuilder.Append(Bin2Hex[binaryNibble]);
             }
             return hexBuilder.ToString();
@@ -842,7 +847,12 @@ namespace mcc
         {
             if (!condition)
             {
-                throw new MccException(this.LineNumber, Program.currentFileName, exceptionMessage);
+                //string fileList = string.Empty;
+                //foreach (string fileName in Program.sourceFileNameList)
+                //{
+                //    fileList += (fileName + " ");
+                //}
+                throw new MccException(this.LineNumber, Program.sourceFileNameList.Last(), exceptionMessage);
             }
         }
 

@@ -19,7 +19,7 @@ namespace mcc
         static bool isRisingEdge = true;
         static bool assemblyMode = false;
         static int sourceFileIndex = -1;
-        static string currentSourceFileName = string.Empty;
+        public static List<string> sourceFileNameList = new List<string>();
         static Dictionary<string, string[]> multiLineAlias = new Dictionary<string, string[]>();
 
         static int Main(string[] args)
@@ -255,7 +255,7 @@ namespace mcc
             Assert(!lineCounter.ContainsKey(sourceFileName), $"Recursive or circular #include {sourceFileName}");
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 1 out of 2.");
-            Program.currentSourceFileName = sourceFileName;
+            Program.sourceFileNameList.Add(sourceFileName);
 
             sourceFile = new System.IO.StreamReader(sourceFileName);
             currentFileName = sourceFileName;
@@ -595,7 +595,7 @@ namespace mcc
             }
 
             logger.WriteLine($"Success: pass 0 on {sourceFileName} - {lineCounter[sourceFileName]} line(s) read, {parsedLines.Count.ToString()} statement(s) parsed, code address range 0x{invokerOrgValue:X4} - 0x{orgValue:X4}.");
-
+            Program.sourceFileNameList.RemoveAt(Program.sourceFileNameList.Count - 1);
             return orgValue;
         }
         
@@ -620,7 +620,8 @@ namespace mcc
             List<MicroField> fields = new List<MicroField>();
 
             logger.WriteLine($"Compiling {sourceFileName}, pass 2 out of 2.");
-            Program.currentSourceFileName = sourceFileName;
+            Program.sourceFileNameList.Add(sourceFileName);
+            currentFileName = sourceFileName;
 
             foreach (ParsedLine pl in parsedLines)
             {
@@ -718,6 +719,7 @@ namespace mcc
             }
 
             logger.WriteLine($"Success: pass 1 on {sourceFileName} - {outputFileCount.ToString()} file(s) generated.");
+            Program.sourceFileNameList.RemoveAt(Program.sourceFileNameList.Count - 1);
         }
 
         static int Generate(string baseFileName, MemBlock mem, bool allowUninitialized, string trace, List<MicroField> fields, bool isConversion)
