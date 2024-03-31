@@ -48,7 +48,7 @@
             for (int address = FromValue; address <= ToValue; address++)
             {
                 string comment = generateComment ? GetParsedLineString() : string.Empty;
-                memory.Write(address, data, comment, null, true, "mapper");
+                memory.Write(address, data, comment, null, string.Empty, true, "mapper");
                 generateComment = false;
                 writeCnt++;
             }

@@ -23,7 +23,7 @@ namespace mcc
                 {
                     byteEntry[c] = (byte)' ';    // initialize with spaces
                 }
-                Write(r, byteEntry, string.Empty, string.Empty, -1, "symbol");
+                Write(r, byteEntry, string.Empty, string.Empty, string.Empty, -1, "symbol");
             }
         }
 
@@ -53,7 +53,7 @@ namespace mcc
                 }
             }
             memory.Remove(mi.OrgValue);
-            Write(mi.OrgValue, byteEntry, mi.GetParsedLineString(), symEntry, -1, "symbol");
+            Write(mi.OrgValue, byteEntry, mi.GetParsedLineString(), symEntry, string.Empty, -1, "symbol");
         }
 
         protected override int GenerateVhdFile(string prefix, FileInfo outputFileInfo, List<MicroField> fields, string otherRanges, bool isConversion, bool isRisingEdge)

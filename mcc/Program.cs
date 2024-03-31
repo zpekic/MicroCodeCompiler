@@ -169,7 +169,7 @@ namespace mcc
                                 }
                                 else
                                 {
-                                    mapper.Write(address, byteData, sourceFileName, hexLine, lineCounter[sourceFileName], "hex");
+                                    mapper.Write(address, byteData, sourceFileName, hexLine, rawLine, lineCounter[sourceFileName], "hex");
                                 }
                             }
                             else
@@ -223,7 +223,7 @@ namespace mcc
                             extraComment += string.Format("{0:X2} ", fileBytes[address + i]);
                             data += string.Format("{0}_", mapper.GetBinaryString(fileBytes[address + i], 8));
                         }
-                        mapper.Write(address, data.TrimEnd(new char[] { '_' }), sourceFileName, extraComment, false, "binary");
+                        mapper.Write(address, data.TrimEnd(new char[] { '_' }), sourceFileName, extraComment, string.Empty, false, "binary");
                     }
 
                     break;
@@ -249,6 +249,7 @@ namespace mcc
             MicroField checkFe = null;
             bool inBlockComment = false;
             System.IO.StreamReader sourceFile;
+            bool emptyMicroinstruction;
 
             // Read the file and display it line by line.  
             Assert(File.Exists(sourceFileName), $"Source file '{sourceFileName}' not found");
@@ -262,6 +263,7 @@ namespace mcc
             lineCounter.Add(currentFileName, 0);
             while ((rawLine = sourceFile.ReadLine()) != null)
             {
+                emptyMicroinstruction = false;
                 lineCounter[sourceFileName]++;
 
                 ParsedLine.Split3(rawLine.Trim(), "//", out rawLine, out comment);
@@ -493,7 +495,13 @@ namespace mcc
 
                         if (ParsedLine.Split3(rawLine, ":", out label, out content))
                         {
+                            //Assert(content.Trim().Length > 0, $"Label '{label}' on empty (or comment-only) line");
                             inImplementationSection = true;
+                            if (string.IsNullOrEmpty(content.Trim()))
+                            {
+                                logger.Write($"Warning: Label '{label}' on empty (or comment-only) line");
+                                emptyMicroinstruction = true;
+                            }
                             if (!label.StartsWith("_"))
                             {
                                 // all labels not starting with _ are valid microcode jump/call destinations
@@ -558,8 +566,11 @@ namespace mcc
                                     }
                                 }
 
-                                parsedLines.Add(microInstruction);
-                                orgValue++;
+                                if (!emptyMicroinstruction)
+                                {
+                                    parsedLines.Add(microInstruction);
+                                    orgValue++;
+                                }
                                 continuationLine = ((ParsedLine)microInstruction).Pass1();
                             }
                         }

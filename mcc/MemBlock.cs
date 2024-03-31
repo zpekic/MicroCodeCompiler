@@ -19,12 +19,14 @@ namespace mcc
             public string Data;
             public string Comment;
             public string ExtraComment;
+            public string RawSource;
 
-            public DataVector(string data, string comment, string extraComment)
+            public DataVector(string data, string comment, string extraComment, string rawSource)
             {
                 this.Data = data;
                 this.Comment = comment;
                 this.ExtraComment = extraComment;
+                this.RawSource = rawSource;
             }
         }
 
@@ -51,7 +53,7 @@ namespace mcc
             Assert(outputFiles.Count >= 0, "No output files specified");
         }
 
-        public void Write(int address, byte[] data, string comment, string extraComment, int LineNumber, string flavor)
+        public void Write(int address, byte[] data, string comment, string extraComment, string rawSource, int LineNumber, string flavor)
         {
             StringBuilder sbBinary = new StringBuilder();
 
@@ -63,10 +65,10 @@ namespace mcc
             }
             string sb = sbBinary.ToString();
             logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{sb}'");
-            memory.Add(address, new DataVector(sb, comment, extraComment));
+            memory.Add(address, new DataVector(sb, comment, extraComment, rawSource));
         }
 
-        public void Write(int address, string data, string comment, string extraComment, bool allowOverwrite, string flavor)
+        public void Write(int address, string data, string comment, string extraComment, string rawSource, bool allowOverwrite, string flavor)
         {
             Assert(address < (1 << this.addressWidth), $"Tying to write {flavor} location {address:X4} beyond memory limit of 0 .. {(2 << this.addressWidth) - 1:X4}");
             string rawBinaryString = data.Replace("_", string.Empty);
@@ -81,7 +83,7 @@ namespace mcc
             {
                 //logger.WriteLine($"Info: line {LineNumber} - {flavor}[{address:X4}] <= '{data}'");
             }
-            memory.Add(address, new DataVector(data, comment, extraComment));
+            memory.Add(address, new DataVector(data, comment, extraComment, rawSource));
         }
 
         public void GetSize(out int depth, out int width)
@@ -345,6 +347,7 @@ namespace mcc
             {
                 if (memory.ContainsKey(address))
                 {
+                    DataVector dv = memory[address];
                     if (isFirst)
                     {
                         isFirst = false;
@@ -355,23 +358,28 @@ namespace mcc
                         sb.AppendLine(",");
                     }
                     sb.AppendLine();
-                    if (!string.IsNullOrEmpty(memory[address].Comment))
+                    if (!string.IsNullOrEmpty(dv.RawSource))
+                    {
+                        sb.Append("-- ");
+                        sb.AppendLine(dv.RawSource);
+                    }
+                    if (!string.IsNullOrEmpty(dv.Comment))
                     {
                         sb.Append("-- ");
                         // TODO: fix terrible HACK!
-                        DataVector dv = memory[address];
+                        //DataVector dv = memory[address];
                         string data = GetHexFromBinary(dv.Data.Replace("_", string.Empty), dataWidth);
                         string commentWithData = dv.Comment.Replace(".", $" {data}.");
                         //sb.AppendLine(memory[address].Comment);
                         sb.AppendLine(commentWithData);
-                        if (!string.IsNullOrEmpty(memory[address].ExtraComment))
+                        if (!string.IsNullOrEmpty(dv.ExtraComment))
                         {
                             sb.Append("-- ");
-                            sb.AppendLine(memory[address].ExtraComment);
+                            sb.AppendLine(dv.ExtraComment);
                         }
                     }
                     sb.Append($"{address} => ");
-                    sb.Append(GetVhdDataFromBinaryString(memory[address].Data, longHex));
+                    sb.Append(GetVhdDataFromBinaryString(dv.Data, longHex));
                 }
                 else
                 {

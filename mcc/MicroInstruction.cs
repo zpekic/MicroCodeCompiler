@@ -15,6 +15,7 @@ namespace mcc
         private string value_then = string.Empty;
         private string value_else = string.Empty;
         private static ParsedLine[] aliasLines;
+        private string rawContent;
         
         public struct FieldData
         {
@@ -35,6 +36,7 @@ namespace mcc
         public MicroInstruction(int lineNumber, int orgValue, string label, string content, List<ParsedLine> parsedLines, Logger logger) : base("", lineNumber, orgValue, label, content, logger)
         {
             this.ParsedLines = parsedLines;
+            this.rawContent = content;
         }
 
         public override void ParseContent()
@@ -348,7 +350,7 @@ namespace mcc
             TraceListValues(registers.Keys.ToList<string>(), "Found unmatched <= assignments: ", true);
             TraceListValues(values.Keys.ToList<string>(), "Found unmatched = assignments: ", true);
 
-            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), miBuilder.ToString(), false, "code");
+            memory.Write(OrgValue, uiBuilder.ToString(), GetParsedLineString(), miBuilder.ToString(), rawContent, false, "code");
         }
 
         private void ReplaceOverlappedFields(List<MicroField> overlappingFields, ref List<FieldData> fdList, string err)
