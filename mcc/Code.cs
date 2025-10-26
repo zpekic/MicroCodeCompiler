@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -79,7 +80,7 @@ namespace mcc
                 foreach (MicroField.ValueVector vv in field.Values)
                 {
                     string vhdLine = string.Empty;
-                    string[] altNames = vv.Name.Split('|');
+                    string[] altNames = vv.Name.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
 
                     for (int i = 0; i < altNames.Length; i++)
                     {
@@ -90,7 +91,7 @@ namespace mcc
                         }
                         else
                         {
-                            sbFields.AppendLine(vhdLine.Replace(altNames[0], altNames[i]));
+                            sbFields.AppendLine(vhdLine.Replace(altNames[0].Trim(), altNames[i].Trim()));
                         }
                     }
                 }

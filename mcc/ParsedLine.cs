@@ -819,19 +819,42 @@ namespace mcc
         {
             string binaryNibble;
 
-            StringBuilder hexBuilder = new StringBuilder();
-            for (int i = 0; i < dataWidth; i += 4)
-            {
-                binaryNibble = binaryData.Substring(i, 4);
-                //Assert(Bin2Hex.ContainsKey(binaryNibble), string.Format("Invalid nibble '{0}' detected", binaryNibble));
-                hexBuilder.Append(Bin2Hex[binaryNibble]);
-            }
-            return hexBuilder.ToString();
+            Assert(binaryData.Length == dataWidth, $"Binary string '{binaryData}' length not equal to {dataWidth} for conversion into hex string");
+            Assert((binaryData.Length % 4) == 0, $"Binary string '{binaryData}' length not divisible by 4 for hex string conversion");
+            //Assert((dataWidth % 4) == 0, $"Data width {dataWidth} is not divisible by 4 for hex string conversion");
+
+            //if (binaryData.Length < 17)
+            //{
+                // fast path 
+                //return Convert.ToInt32(binaryData, 2).ToString("X");
+            //}
+            //else
+            //{
+
+                string fixedBinaryData = binaryData;
+                int fixedDataWidth = dataWidth;
+                while ((fixedBinaryData.Length % 4) != 0)
+                {
+                    fixedBinaryData = "0" + fixedBinaryData; // append leading zero
+                    fixedDataWidth++;
+                }
+
+                StringBuilder hexBuilder = new StringBuilder();
+                for (int i = 0; i < dataWidth; i += 4)
+                {
+                    binaryNibble = fixedBinaryData.Substring(i, 4);
+                    //Assert(Bin2Hex.ContainsKey(binaryNibble), string.Format("Invalid nibble '{0}' detected", binaryNibble));
+                    hexBuilder.Append(Bin2Hex[binaryNibble]);
+                }
+                return hexBuilder.ToString();
+            //}
         }
 
         protected string GetOctFromBinary(string binaryData, int dataWidth)
         {
             string octet;
+
+            Assert(binaryData.Length == dataWidth, $"Binary string '{binaryData}' length not equal to {dataWidth} for conversion into octal string");
 
             StringBuilder octBuilder = new StringBuilder();
             for (int i = 0; i < (dataWidth / 3); i++)

@@ -57,12 +57,12 @@ namespace mcc
             public bool Match(string token)
             {
                 // support alternate names foo|bar|etc
-                string[] altNames = Name.Split('|');
+                string[] altNames = Name.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
                 if (altNames.Length > 1)
                 {
                     foreach(string altName in altNames)
                     {
-                        if (string.Equals(altName, token, StringComparison.InvariantCultureIgnoreCase))
+                        if (string.Equals(altName.Trim(), token.Trim(), StringComparison.InvariantCultureIgnoreCase))
                         {
                             return true;
                         }
@@ -100,8 +100,8 @@ namespace mcc
                     }
                     else
                     {
-                        string[] altNames = Name.Split('|');
-                        string mainName = altNames[0];
+                        string[] altNames = Name.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
+                        string mainName = altNames[0].Trim();
                         bool allowed = char.IsLetter(mainName[0]);
                         // replace chars that would break VHDL syntax
                         mainName = mainName.Replace("[", "_");
@@ -367,7 +367,7 @@ namespace mcc
             {
                 if (vv.Name.Contains("|"))
                 {
-                    string[] altNames = vv.Name.Split('|');
+                    string[] altNames = vv.Name.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
                     foreach(string altName in altNames)
                     {
                         if (defaultValue.Equals(altName.Trim(), StringComparison.InvariantCultureIgnoreCase))
@@ -428,6 +428,14 @@ namespace mcc
             if (valueName.StartsWith("com", System.StringComparison.InvariantCultureIgnoreCase))
             {
                 return $"std_logic_vector(unsigned(not {fieldName}) + 1)";
+            }
+            if (valueName.StartsWith("from_", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"{valueName.Substring(5)}";
+            }
+            if (valueName.StartsWith("from", System.StringComparison.InvariantCultureIgnoreCase))
+            {
+                return $"{fieldName.Substring(4)}";
             }
 
             string foundLabel = fieldLabels.Find(fl => string.Equals(fl, valueName, System.StringComparison.InvariantCultureIgnoreCase));

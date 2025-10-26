@@ -309,7 +309,7 @@ namespace mcc
                         count += GenerateCoeFile(outputFileInfo, GetBlockName(), this.dataWidth % 4 == 0 ? 16 : 2);
                         break;
                     case ".mif":
-                        count += GenerateMifFile(outputFileInfo, this.dataWidth % 4 == 0 ? 16 : 2);
+                        count += GenerateMifFile(outputFileInfo, this.dataWidth % 4 == 0 ? 16 : 2, true);
                         break;
                     case ".bin":
                         if (this.byteWidth == 1)
@@ -527,69 +527,76 @@ namespace mcc
                 int mask;
                 byte[] record = new byte[5 + this.byteWidth];
                 int skip = 1;
+                string emptyBinaryString = GetEmptyBinaryString();
 
                 for (int address = 0; address < capacity; address += skip)
                 {
+                    string rawBinary;
+
                     if (memory.ContainsKey(address))
                     {
-                        string rawBinary = memory[address].Data.Replace("_", string.Empty);
-                        if (rawBinary.Length > 8 * this.byteWidth)
-                        {
-                            Assert(true, string.Format("Data at location 0X{0:X4} too long ({1} bits) to fit {2} bytes", address, rawBinary.Length.ToString(), this.byteWidth.ToString()));
-                        }
-                        else
-                        {
-                            if (pad)
-                            {
-                                // pad from left until we have the exact length
-                                while (rawBinary.Length < 8 * this.byteWidth)
-                                {
-                                    rawBinary = "0" + rawBinary;
-                                }
-                                skip = 1;
-                            }
-                            else
-                            {
-                                int offset = 1;
-                                // get data until we have the exact length
-                                while (rawBinary.Length < 8 * this.byteWidth)
-                                {
-                                    rawBinary += memory[address + offset].Data.Replace("_", string.Empty);
-                                    offset++;
-                                }
-                                skip = this.byteWidth;
-                            }
-                        }
-
-                        record[0] = (byte)this.byteWidth;
-                        if (pad)
-                        { 
-                            record[1] = (byte)((address * this.byteWidth) >> 8);
-                            record[2] = (byte)(address * this.byteWidth);
-                        }
-                        else
-                        {
-                            record[1] = (byte)(address >> 8);
-                            record[2] = (byte)(address);
-                        }
-                        record[3] = 0;
-                        for (int i = 0; i < this.byteWidth; i++)
-                        {
-                            Assert(GetValueAndMask("0B" + rawBinary.Substring(i << 3, 8), out value, out mask, null), "Non-binary data found in memory. Something went terribly wrong..");
-                            Assert(mask == 0, "Mask data found in memory. Not supported in current version.");
-                            record[i + 4] = (byte) value;
-                        }
-                        // evaluate checksum
-                        int checksum = 0;
-                        for (int i = 0; i < 4 + this.byteWidth; i++)
-                        {
-                            checksum += (int)record[i];
-                        }
-                        checksum = -checksum; // 2' complement
-                        record[4 + this.byteWidth] = (byte)checksum;
-
-                        WriteHexFileRecord(hexFile, record, 5 + this.byteWidth, true);
+                        rawBinary = memory[address].Data.Replace("_", string.Empty);
                     }
+                    else
+                    {
+                        rawBinary = emptyBinaryString;
+                    }
+                    if (rawBinary.Length > 8 * this.byteWidth)
+                    {
+                        Assert(true, string.Format("Data at location 0X{0:X4} too long ({1} bits) to fit {2} bytes", address, rawBinary.Length.ToString(), this.byteWidth.ToString()));
+                    }
+                    else
+                    {
+                        if (pad)
+                        {
+                            // pad from left until we have the exact length
+                            while (rawBinary.Length < 8 * this.byteWidth)
+                            {
+                                rawBinary = "0" + rawBinary;
+                            }
+                            skip = 1;
+                        }
+                        else
+                        {
+                            int offset = 1;
+                            // get data until we have the exact length
+                            while (rawBinary.Length < 8 * this.byteWidth)
+                            {
+                                rawBinary += memory[address + offset].Data.Replace("_", string.Empty);
+                                offset++;
+                            }
+                            skip = this.byteWidth;
+                        }
+                    }
+
+                    record[0] = (byte)this.byteWidth;
+                    if (pad)
+                    { 
+                        record[1] = (byte)((address * this.byteWidth) >> 8);
+                        record[2] = (byte)(address * this.byteWidth);
+                    }
+                    else
+                    {
+                        record[1] = (byte)(address >> 8);
+                        record[2] = (byte)(address);
+                    }
+                    record[3] = 0;
+                    for (int i = 0; i < this.byteWidth; i++)
+                    {
+                        Assert(GetValueAndMask("0B" + rawBinary.Substring(i << 3, 8), out value, out mask, null), "Non-binary data found in memory. Something went terribly wrong..");
+                        Assert(mask == 0, "Mask data found in memory. Not supported in current version.");
+                        record[i + 4] = (byte) value;
+                    }
+                    // evaluate checksum
+                    int checksum = 0;
+                    for (int i = 0; i < 4 + this.byteWidth; i++)
+                    {
+                        checksum += (int)record[i];
+                    }
+                    checksum = -checksum; // 2' complement
+                    record[4 + this.byteWidth] = (byte)checksum;
+
+                    WriteHexFileRecord(hexFile, record, 5 + this.byteWidth, true);
                 }
 
                 // assemble closing hex file record
@@ -668,8 +675,9 @@ namespace mcc
                 string data;
                 int emptyCount = 0;
                 int initializedCount = 0;
-                string emptyBinaryString = "";
-                for (int address = 0; address < capacity; address++)
+                string emptyBinaryString = GetEmptyBinaryString();
+
+            for (int address = 0; address < capacity; address++)
                 {
                     if (memory.ContainsKey(address))
                     {
@@ -678,11 +686,6 @@ namespace mcc
                     }
                     else
                     {
-                        while (emptyBinaryString.Length < this.dataWidth)
-                        {
-                            emptyBinaryString = "0" + emptyBinaryString;
-                        }
-
                         data = emptyBinaryString;
                         emptyCount++;
                     }
@@ -706,41 +709,66 @@ namespace mcc
             return 1;
         }
 
-        protected int GenerateMifFile(FileInfo outputFileInfo, int data_radix)
+        protected string GetEmptyBinaryString()
+        {
+        StringBuilder emptyData = new StringBuilder();
+        for (int i = 0; i < this.dataWidth; i++)
+        {
+            emptyData.Append("0");
+        }
+        return emptyData.ToString();
+        }
+
+    protected int GenerateMifFile(FileInfo outputFileInfo, int data_radix, bool flatOutput)
         {
             int capacity = 2 << (this.addressWidth - 1);
 
-            using (System.IO.StreamWriter cgfFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
+            using (System.IO.StreamWriter mifFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
                 logger.Write(string.Format("Writing '{0}' ...", outputFileInfo.FullName));
 
-                cgfFile.WriteLine($"%---------------------------------%");
-                cgfFile.WriteLine($"WIDTH={dataWidth};");
-                cgfFile.WriteLine($"DEPTH={capacity};");
-                cgfFile.WriteLine($"ADDRESS_RADIX=HEX;");
+                mifFile.WriteLine($"%---------------------------------%");
+                mifFile.WriteLine($"WIDTH={dataWidth};");
+                mifFile.WriteLine($"DEPTH={capacity};");
+                mifFile.WriteLine($"ADDRESS_RADIX=HEX;");
                 if (data_radix == 16)
                 {
-                    cgfFile.WriteLine($"DATA_RADIX=HEX;");
+                    mifFile.WriteLine($"DATA_RADIX=HEX;");
                 }
                 else
                 {
-                    cgfFile.WriteLine($"DATA_RADIX=BIN;");
+                    mifFile.WriteLine($"DATA_RADIX=BIN;");
                 }
-                cgfFile.WriteLine($"CONTENT BEGIN");
+                mifFile.WriteLine($"CONTENT BEGIN");
 
                 string data;
                 string previousData = string.Empty;
                 int startRun = 0;
                 int endRun = 0;
+                // generate placeholder from all 0
+                string defaultData = GetEmptyBinaryString();
                 for (int address = 0; address < capacity; address++)
                 {
                     if (memory.ContainsKey(address))
                     {
                         data = memory[address].Data.Replace("_", string.Empty);
-                        if (data_radix == 16)
-                        {
-                            data = GetHexFromBinary(data, this.dataWidth);
-                        }
+                    }
+                    else
+                    {
+                        data = defaultData;
+                    }
+                    if (data_radix == 16)
+                    {
+                        data = GetHexFromBinary(data, this.dataWidth);
+                    }
+                    if (flatOutput)
+                    {
+                        // flat output, useful for file string comparison with memory dumps from the device
+                        mifFile.WriteLine($"{address:X4} :  {data};");
+                    }
+                    else
+                    {
+                        // recognize consequitive repeating values and generate from .. to run strings for them
                         if (data.Equals(previousData, StringComparison.InvariantCultureIgnoreCase))
                         {
                             endRun = address;
@@ -752,20 +780,20 @@ namespace mcc
                                 // print out the previous run
                                 if (endRun > startRun)
                                 {
-                                    cgfFile.WriteLine($"[{startRun:X4} .. {endRun:X4}] : {previousData};");
+                                    mifFile.WriteLine($"[{startRun:X4} .. {endRun:X4}] :  {previousData};");
                                 }
                                 else
                                 {
                                     if (!string.IsNullOrEmpty(previousData))
                                     {
-                                        cgfFile.WriteLine($"{endRun:X4} : {previousData};");
+                                        mifFile.WriteLine($"{endRun:X4} :  {previousData};");
                                     }
                                 }
                             }
                             else
                             {
                                 // print out a single value
-                                cgfFile.WriteLine($"{address:X4} : {data};");
+                                mifFile.WriteLine($"{address:X4} :  {data};");
                             }
                             // prepare for next possible run
                             endRun = address;
@@ -774,21 +802,22 @@ namespace mcc
                         }
                     }
                 }
-
-                // flush
-                if (endRun > startRun)
+                // flush in case of fancy output
+                if (!flatOutput)
                 {
-                    cgfFile.WriteLine($"[{startRun:X4} .. {endRun:X4}] : {previousData};");
+                    if (endRun > startRun)
+                    {
+                        mifFile.WriteLine($"[{startRun:X4} .. {endRun:X4}] : {previousData};");
+                    }
+                    else
+                    {
+                        Assert(!string.IsNullOrEmpty(previousData), "Run detection algorithm error");
+                        mifFile.WriteLine($"{endRun:X4} : {previousData};");
+                    }
                 }
-                else
-                {
-                    Assert(!string.IsNullOrEmpty(previousData), "Run detection algorithm error");
-                    cgfFile.WriteLine($"{endRun:X4} : {previousData};");
-                }
-
                 // finalize file
-                cgfFile.WriteLine($"END;");
-                cgfFile.WriteLine($"%---------------------------------%");
+                mifFile.WriteLine($"END;");
+                mifFile.WriteLine($"%---------------------------------%");
 
                 logger.WriteLine(" Done.");
             }
