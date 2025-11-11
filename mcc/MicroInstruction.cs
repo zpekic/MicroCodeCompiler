@@ -162,8 +162,8 @@ namespace mcc
                                 }
 
                                 // double check the if default then label else label 
-                                Assert(!string.IsNullOrEmpty(value_if), "default condition not found for '{subLabel}' (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
-                                Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), ".sub label '{subLabel}' not defined");
+                                Assert(!string.IsNullOrEmpty(value_if), $"default condition not found for '{subLabel}' (subroutine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+                                Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), $".sub label '{subLabel}' not defined");
                             }
                         }
                         else

@@ -435,7 +435,7 @@ namespace mcc
             }
             if (valueName.StartsWith("from", System.StringComparison.InvariantCultureIgnoreCase))
             {
-                return $"{fieldName.Substring(4)}";
+                return $"{valueName.Substring(4)}";
             }
 
             string foundLabel = fieldLabels.Find(fl => string.Equals(fl, valueName, System.StringComparison.InvariantCultureIgnoreCase));

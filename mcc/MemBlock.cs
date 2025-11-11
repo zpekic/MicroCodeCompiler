@@ -664,11 +664,12 @@ namespace mcc
         {
             int capacity = 2 << (this.addressWidth - 1);
 
+            Assert((data_radix == 2) || (data_radix == 16), $"{outputFileInfo} - MEMORY_INITIALIZATION_RADIX must be either 2 or 16.");
             using (System.IO.StreamWriter coeFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
             {
                 logger.Write(string.Format("Writing '{0}' (LF only) ...", outputFileInfo.FullName));
 
-                coeFile.Write($";#COE file \"{outputFileInfo.Name}\" generated from \"{from}\"\n");
+                coeFile.Write($";COE file \"{outputFileInfo.Name}\" generated from \"{from}\"\n");
                 coeFile.Write($"MEMORY_INITIALIZATION_RADIX={data_radix};\n");
                 coeFile.Write($"MEMORY_INITIALIZATION_VECTOR=\n");
 
@@ -676,33 +677,78 @@ namespace mcc
                 int emptyCount = 0;
                 int initializedCount = 0;
                 string emptyBinaryString = GetEmptyBinaryString();
+                bool lastAddress;
+                string delimiter;
+                bool byteCoe = from.Equals("mcc.Symbol", StringComparison.InvariantCultureIgnoreCase); // semi-hack...
+                int charsPerByte = 8;   // assume binary, 8 chars per byte
 
-            for (int address = 0; address < capacity; address++)
+                for (int address = 0; address < capacity; address++)
                 {
+                    string extraComment = string.Empty;
+                    string coeComment = string.Empty;
+
+                    lastAddress = (address == (capacity - 1));
                     if (memory.ContainsKey(address))
                     {
                         data = memory[address].Data.Replace("_", string.Empty);
+                        extraComment = memory[address].ExtraComment;
                         initializedCount++;
                     }
                     else
                     {
                         data = emptyBinaryString;
+                        extraComment = string.Empty;
                         emptyCount++;
+                    }
+                    if (!string.IsNullOrEmpty(extraComment))
+                    {
+                        coeComment = $";{address:X4} {extraComment}\n";
                     }
                     if (data_radix == 16)
                     {
                         data = GetHexFromBinary(data, this.dataWidth);
+                        charsPerByte = 2;                                // 2 hex chars per byte
                     }
 
-                    if ((capacity - address) == 1)
+                    if (byteCoe)
                     {
-                        coeFile.Write($"{data};\n");
+                        // if writing sybols, assume symbol ROM is byte oriented
+                        for (int byteIndex = 0; byteIndex < data.Length; byteIndex += charsPerByte)
+                        {
+                            string byteData = data.Substring(byteIndex, charsPerByte);
+                            delimiter = ",";
+                            if (lastAddress && (byteIndex + charsPerByte == data.Length))
+                            {
+                                delimiter = ";";
+                            }
+
+                            if (byteIndex == 0)
+                            {
+                                if (!string.IsNullOrEmpty(coeComment))
+                                {
+                                    coeFile.Write(coeComment);
+                                }
+                                coeFile.Write($"{byteData}{delimiter}\n");
+                            }
+                            else
+                            {
+                                coeFile.Write($"{byteData}{delimiter}\n");
+                            }
+                            //Console.Write(Char.ConvertFromUtf32(Convert.ToInt32(byteData, 16)));
+                        }
+                        //Console.WriteLine();
                     }
                     else
                     {
-                        coeFile.Write($"{data}\n");
+                        delimiter = lastAddress ? ";" : ",";
+                        if (!string.IsNullOrEmpty(coeComment))
+                        {
+                            coeFile.Write(coeComment);
+                        }
+                        coeFile.Write($"{data}{delimiter}\n");
                     }
                 }
+                coeFile.Write("\n");
 
                 logger.WriteLine($" Done (initialized locations: {initializedCount}, empty locations: {emptyCount}, total locations: {emptyCount + initializedCount}).");
             }

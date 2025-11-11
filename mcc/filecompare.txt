@@ -1,0 +1,233 @@
+Comparing files Alias.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Alias.cs
+FC: no differences encountered
+
+Comparing files App.config and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\App.config
+FC: no differences encountered
+
+Comparing files Code.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Code.cs
+FC: no differences encountered
+
+Comparing files Controller.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Controller.cs
+FC: no differences encountered
+
+Comparing files fc.txt and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\fc.txt
+Comparing files FieldElse.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\FieldElse.cs
+FC: no differences encountered
+
+Comparing files FieldIf.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\FieldIf.cs
+FC: no differences encountered
+
+Comparing files FieldReg.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\FieldReg.cs
+FC: no differences encountered
+
+Comparing files FieldThen.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\FieldThen.cs
+FC: no differences encountered
+
+Comparing files FieldVal.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\FieldVal.cs
+FC: no differences encountered
+
+Comparing files filecompare.cmd and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\filecompare.cmd
+Comparing files filecompare.txt and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\filecompare.txt
+Comparing files Logger.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Logger.cs
+FC: no differences encountered
+
+Comparing files Map.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Map.cs
+FC: no differences encountered
+
+Comparing files Mapper.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Mapper.cs
+FC: no differences encountered
+
+Comparing files mcc.csproj and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\mcc.csproj
+FC: no differences encountered
+
+Comparing files mcc.csproj.user and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\mcc.csproj.user
+FC: no differences encountered
+
+Comparing files MccException.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MccException.cs
+FC: no differences encountered
+
+Comparing files MemBlock.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+***** MemBlock.cs
+
+            Assert((data_radix == 2) || (data_radix == 16), $"{outputFileInfo} - MEMORY_INITIALIZATION_RADIX must be either 2 o
+r 16.");
+            using (System.IO.StreamWriter coeFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+
+            using (System.IO.StreamWriter coeFile = new System.IO.StreamWriter(outputFileInfo.FullName, false, Encoding.ASCII))
+*****
+
+***** MemBlock.cs
+
+                coeFile.Write($";COE file \"{outputFileInfo.Name}\" generated from \"{from}\"\n");
+                coeFile.Write($"MEMORY_INITIALIZATION_RADIX={data_radix};\n");
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+
+                coeFile.Write($";#COE file \"{outputFileInfo.Name}\" generated from \"{from}\"\n");
+                coeFile.Write($"MEMORY_INITIALIZATION_RADIX={data_radix};\n");
+*****
+
+***** MemBlock.cs
+                string emptyBinaryString = GetEmptyBinaryString();
+                bool lastAddress;
+                string delimiter;
+                bool byteCoe = from.Equals("mcc.Symbol", StringComparison.InvariantCultureIgnoreCase); // semi-hack...
+                int charsPerByte = 8;   // assume binary, 8 chars per byte
+
+                for (int address = 0; address < capacity; address++)
+                {
+                    string extraComment = string.Empty;
+                    string coeComment = string.Empty;
+
+                    lastAddress = (address == (capacity - 1));
+                    if (memory.ContainsKey(address))
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                string emptyBinaryString = GetEmptyBinaryString();
+
+            for (int address = 0; address < capacity; address++)
+                {
+                    if (memory.ContainsKey(address))
+*****
+
+***** MemBlock.cs
+                        data = memory[address].Data.Replace("_", string.Empty);
+                        extraComment = memory[address].ExtraComment;
+                        initializedCount++;
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                        data = memory[address].Data.Replace("_", string.Empty);
+                        initializedCount++;
+*****
+
+***** MemBlock.cs
+                        data = emptyBinaryString;
+                        extraComment = string.Empty;
+                        emptyCount++;
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                        data = emptyBinaryString;
+                        emptyCount++;
+*****
+
+***** MemBlock.cs
+                    }
+                    if (!string.IsNullOrEmpty(extraComment))
+                    {
+                        coeComment = $";{address:X4} {extraComment}\n";
+                    }
+                    if (data_radix == 16)
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                    }
+                    if (data_radix == 16)
+*****
+
+***** MemBlock.cs
+                        data = GetHexFromBinary(data, this.dataWidth);
+                        charsPerByte = 2;                                // 2 hex chars per byte
+                    }
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                        data = GetHexFromBinary(data, this.dataWidth);
+                    }
+*****
+
+***** MemBlock.cs
+
+                    if (byteCoe)
+                    {
+                        // if writing sybols, assume symbol ROM is byte oriented
+                        for (int byteIndex = 0; byteIndex < data.Length; byteIndex += charsPerByte)
+                        {
+                            string byteData = data.Substring(byteIndex, charsPerByte);
+                            delimiter = ",";
+                            if (lastAddress && (byteIndex + charsPerByte == data.Length))
+                            {
+                                delimiter = ";";
+                            }
+
+                            if (byteIndex == 0)
+                            {
+                                if (!string.IsNullOrEmpty(coeComment))
+                                {
+                                    coeFile.Write(coeComment);
+                                }
+                                coeFile.Write($"{byteData}{delimiter}\n");
+                            }
+                            else
+                            {
+                                coeFile.Write($"{byteData}{delimiter}\n");
+                            }
+                            //Console.Write(Char.ConvertFromUtf32(Convert.ToInt32(byteData, 16)));
+                        }
+                        //Console.WriteLine();
+                    }
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+
+                    if ((capacity - address) == 1)
+                    {
+                        coeFile.Write($"{data};\n");
+                    }
+*****
+
+***** MemBlock.cs
+                    {
+                        delimiter = lastAddress ? ";" : ",";
+                        if (!string.IsNullOrEmpty(coeComment))
+                        {
+                            coeFile.Write(coeComment);
+                        }
+                        coeFile.Write($"{data}{delimiter}\n");
+                    }
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                    {
+                        coeFile.Write($"{data}\n");
+                    }
+*****
+
+***** MemBlock.cs
+                }
+                coeFile.Write("\n");
+
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MemBlock.cs
+                }
+
+*****
+
+Comparing files MicroField.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MicroField.cs
+FC: no differences encountered
+
+Comparing files MicroInstruction.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MicroInstruction.cs
+***** MicroInstruction.cs
+                                // double check the if default then label else label 
+                                Assert(!string.IsNullOrEmpty(value_if), $"default condition not found for '{subLabel}' (subrout
+ine call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+                                Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), $".sub label '{s
+ubLabel}' not defined");
+                            }
+***** \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\MicroInstruction.cs
+                                // double check the if default then label else label 
+                                Assert(!string.IsNullOrEmpty(value_if), "default condition not found for '{subLabel}' (subrouti
+ne call is uses '.if <defaultCond> then <label> else <label>' to call <label>())");
+                                Assert(!string.IsNullOrEmpty(value_then) && !string.IsNullOrEmpty(value_else), ".sub label '{su
+bLabel}' not defined");
+                            }
+*****
+
+Comparing files Org.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Org.cs
+FC: no differences encountered
+
+Comparing files ParsedLine.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\ParsedLine.cs
+FC: no differences encountered
+
+Comparing files ParsedLineWithLabel.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\ParsedLineWithLabel.cs
+FC: no differences encountered
+
+Comparing files ParsedLineWithNoLabel.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\ParsedLineWithNoLabel.cs
+FC: no differences encountered
+
+Comparing files Program.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Program.cs
+FC: no differences encountered
+
+Comparing files Sub.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Sub.cs
+FC: no differences encountered
+
+Comparing files Symbol.cs and \USERS\ADMINISTRATOR\SOURCE\REPOS\ZPEKIC\MICROCODECOMPILER\MCC\Symbol.cs
+FC: no differences encountered
+
